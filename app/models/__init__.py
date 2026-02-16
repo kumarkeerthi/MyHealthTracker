@@ -1,4 +1,7 @@
 from app.models.models import (
+    ChallengeAssignment,
+    ChallengeFrequency,
+    ChallengeStreak,
     DailyLog,
     ExerciseCategory,
     ExerciseEntry,
@@ -13,6 +16,9 @@ from app.models.models import (
 
 __all__ = [
     "User",
+    "ChallengeFrequency",
+    "ChallengeAssignment",
+    "ChallengeStreak",
     "MetabolicProfile",
     "FoodItem",
     "DailyLog",

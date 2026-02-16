@@ -26,6 +26,19 @@ type DashboardProps = {
   };
   weeklyStrengthGraph: number[];
   metabolicExerciseMessage: string;
+  challenge: {
+    title: string;
+    description: string;
+    current_streak: number;
+    longest_streak: number;
+    completed: boolean;
+    banner_title: string;
+  };
+  monthlyChallenge: {
+    title: string;
+    description: string;
+    completed: boolean;
+  };
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -44,6 +57,35 @@ function MacroBar({ label, value, max, color }: { label: string; value: number; 
       <div className="flex items-center justify-between text-sm"><span>{label}</span><span>{value.toFixed(1)}</span></div>
       <div className="mt-2 h-2 rounded-full bg-slate-800"><div className="h-full rounded-full" style={{ width: `${width}%`, background: color }} /></div>
     </div>
+  );
+}
+
+
+function ChallengeCard({
+  challenge,
+  monthlyChallenge,
+}: {
+  challenge: DashboardProps["challenge"];
+  monthlyChallenge: DashboardProps["monthlyChallenge"];
+}) {
+  return (
+    <section className="glass-card p-5">
+      <p className="text-xs uppercase tracking-[0.22em] text-electric">{challenge.banner_title}</p>
+      <p className="mt-2 text-lg font-semibold">{challenge.title}</p>
+      <p className="mt-1 text-sm text-slate-300">{challenge.description}</p>
+      <div className="mt-3 flex items-center justify-between text-sm">
+        <span>Streak: {challenge.current_streak} days</span>
+        <span className="text-slate-400">Best: {challenge.longest_streak} days</span>
+      </div>
+      <p className={`mt-2 text-sm ${challenge.completed ? 'text-emerald-300' : 'text-amber-300'}`}>
+        {challenge.completed ? 'Completed today' : 'Pending today'}
+      </p>
+      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Monthly mode</p>
+        <p className="mt-1 text-sm font-medium">{monthlyChallenge.title}</p>
+        <p className="text-xs text-slate-300">{monthlyChallenge.description}</p>
+      </div>
+    </section>
   );
 }
 
@@ -108,6 +150,8 @@ export function Dashboard(props: DashboardProps) {
           <StrengthGraph values={props.weeklyStrengthGraph} />
         </>
       )}
+
+      <ChallengeCard challenge={props.challenge} monthlyChallenge={props.monthlyChallenge} />
 
       <section>
         <h2 className="mb-3 text-sm uppercase tracking-[0.22em] text-slate-400">Vitals</h2>

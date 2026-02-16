@@ -34,6 +34,8 @@ class User(Base):
     vitals_entries: Mapped[list["VitalsEntry"]] = relationship(back_populates="user")
     exercise_entries: Mapped[list["ExerciseEntry"]] = relationship(back_populates="user")
     metabolic_profile: Mapped["MetabolicProfile"] = relationship(back_populates="user", uselist=False)
+    challenge_assignments: Mapped[list["ChallengeAssignment"]] = relationship(back_populates="user")
+    challenge_streaks: Mapped[list["ChallengeStreak"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -41,6 +43,11 @@ class ExerciseCategory(str, Enum):
     BODYWEIGHT = "BODYWEIGHT"
     MONKEY_BAR = "MONKEY_BAR"
     STRENGTH = "STRENGTH"
+
+
+class ChallengeFrequency(str, Enum):
+    DAILY = "DAILY"
+    MONTHLY = "MONTHLY"
 
 
 class MetabolicProfile(Base):
@@ -192,3 +199,45 @@ class InsulinScore(Base):
     calculated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     daily_log: Mapped["DailyLog"] = relationship(back_populates="insulin_scores")
+
+
+class ChallengeAssignment(Base):
+    __tablename__ = "challenge_assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    frequency: Mapped[ChallengeFrequency] = mapped_column(
+        SqlEnum(ChallengeFrequency, name="challenge_frequency_enum"),
+        default=ChallengeFrequency.DAILY,
+    )
+    challenge_date: Mapped[date] = mapped_column(Date, nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    challenge_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    challenge_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    challenge_description: Mapped[str] = mapped_column(String(280), nullable=False)
+    goal_metric: Mapped[str] = mapped_column(String(120), nullable=False)
+    goal_target: Mapped[float] = mapped_column(Float, nullable=False)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="challenge_assignments")
+
+
+class ChallengeStreak(Base):
+    __tablename__ = "challenge_streaks"
+    __table_args__ = (UniqueConstraint("user_id", "frequency", name="uq_user_challenge_frequency"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    frequency: Mapped[ChallengeFrequency] = mapped_column(
+        SqlEnum(ChallengeFrequency, name="challenge_streak_frequency_enum"),
+        default=ChallengeFrequency.DAILY,
+    )
+    current_streak: Mapped[int] = mapped_column(Integer, default=0)
+    longest_streak: Mapped[int] = mapped_column(Integer, default=0)
+    last_completed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="challenge_streaks")
