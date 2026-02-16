@@ -108,3 +108,18 @@ Manual SQL migration scripts are in `migrations/`.
   "post_meal_walk": false
 }
 ```
+
+## Phase 2 Frontend (Next.js)
+A mobile-first PWA dashboard is available under `frontend/`.
+
+### Frontend run
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Set backend URL if needed:
+```bash
+export NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
