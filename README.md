@@ -7,7 +7,7 @@ Clinical-grade metabolic intelligence backend built with FastAPI, SQLAlchemy, an
 - Configurable `metabolic_profiles` per user (seeded with defaults).
 - Expanded exercise model (`exercise_category`, movement metadata, intensity, steps/calories).
 - Expanded vitals model (`resting_hr`, `sleep_hours`, `waist_cm`, `hrv`, `steps_total`, `body_fat_percentage`).
-- Apple Health web-friendly ingestion endpoint and service layer.
+- Apple Health automated sync endpoint (`POST /apple-sync`) with iOS Shortcut relay support and token auth.
 - New profile, exercise summary, vitals summary, and external-event endpoints.
 - WhatsApp webhook, notification event webhook, notification settings API, and automated coaching scheduler.
 
@@ -39,7 +39,8 @@ Added:
 - `PUT /profile`
 - `GET /exercise-summary`
 - `GET /vitals-summary`
-- `POST /import-apple-health`
+- `POST /apple-sync`
+- `POST /import-apple-health` (backward-compatible alias)
 - `POST /external-event`
 - `POST /llm/analyze`
 - `GET /recipes`
@@ -95,7 +96,7 @@ uvicorn app.main:app --reload
 ## Migrations
 Manual SQL migration scripts are in `migrations/`.
 
-## Example payload: Apple Health import
+## Example payload: Apple Health sync
 ```json
 {
   "user_id": 1,
@@ -104,6 +105,8 @@ Manual SQL migration scripts are in `migrations/`.
     "steps": 8942,
     "resting_heart_rate": 72,
     "sleep_hours": 6.8,
+    "hrv": 52,
+    "vo2_max": 41.3,
     "workouts": [
       {
         "exercise_category": "WALK",
@@ -112,12 +115,16 @@ Manual SQL migration scripts are in `migrations/`.
         "duration_minutes": 22,
         "perceived_intensity": 4,
         "step_count": 2200,
-        "calories_estimate": 125
+        "calories_estimate": 125,
+        "within_60_min_meal": true,
+        "performed_at": "2026-01-02T09:00:00Z"
       }
     ]
   }
 }
 ```
+
+Token security: `/apple-sync` requires `Authorization: Bearer <token>` from `POST /auth/token` and enforces token user ↔ payload user matching (admins exempt).
 
 ## Example profile configuration
 ```json

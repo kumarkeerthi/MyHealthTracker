@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.security import create_access_token, llm_usage_limiter, require_admin, sanitize_text
+from app.core.security import create_access_token, get_current_token_claims, llm_usage_limiter, require_admin, sanitize_text
 from app.models import (
     ChallengeAssignment,
     ChallengeFrequency,
@@ -526,8 +526,15 @@ def vitals_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
     )
 
 
-@router.post("/import-apple-health")
-def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends(get_db)):
+@router.post("/apple-sync")
+def apple_sync(
+    payload: AppleHealthImportRequest,
+    claims: dict = Depends(get_current_token_claims),
+    db: Session = Depends(get_db),
+):
+    if int(claims.get("sub", 0)) != payload.user_id and not claims.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Token user_id does not match payload user_id")
+
     user = db.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -535,6 +542,15 @@ def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends
     service = AppleHealthService(db)
     result = service.ingest(user, payload.model_dump())
     return {"status": "ok", **result}
+
+
+@router.post("/import-apple-health")
+def import_apple_health(
+    payload: AppleHealthImportRequest,
+    claims: dict = Depends(get_current_token_claims),
+    db: Session = Depends(get_db),
+):
+    return apple_sync(payload=payload, claims=claims, db=db)
 
 
 
