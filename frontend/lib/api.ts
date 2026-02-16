@@ -53,6 +53,28 @@ export type NotificationSettings = {
   silent_mode: boolean;
 };
 
+export type Recipe = {
+  id: number;
+  name: string;
+  ingredients: string;
+  macros: {
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
+  cooking_time_minutes: number;
+  oil_usage_tsp: number;
+  insulin_score_impact: number;
+  external_links: string[];
+};
+
+export type RecipeSuggestion = {
+  user_id: number;
+  carb_load_remaining: number;
+  suggestion: string;
+  recipes: Recipe[];
+};
+
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -68,13 +90,15 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise, challenge, monthlyChallenge] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
     readJson<ExerciseSummary>('/exercise-summary?user_id=1'),
     readJson<Challenge>('/challenge?user_id=1'),
     readJson<Challenge>('/challenge/monthly?user_id=1'),
+    readJson<Recipe[]>('/recipes'),
+    readJson<RecipeSuggestion>('/recipes/suggestions?user_id=1'),
   ]);
 
   return {
@@ -84,6 +108,8 @@ export async function getDashboardData() {
     exercise,
     challenge,
     monthlyChallenge,
+    recipes,
+    recipeSuggestion,
   };
 }
 

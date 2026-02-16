@@ -44,6 +44,24 @@ class LLMAnalyzeResponse(BaseModel):
     source: str
 
 
+class RecipeResponse(BaseModel):
+    id: int
+    name: str
+    ingredients: str
+    macros: dict[str, float]
+    cooking_time_minutes: int
+    oil_usage_tsp: float
+    insulin_score_impact: float
+    external_links: list[str] = Field(default_factory=list)
+
+
+class RecipeSuggestionResponse(BaseModel):
+    user_id: int
+    carb_load_remaining: float
+    suggestion: str
+    recipes: list[RecipeResponse]
+
+
 class LogVitalsRequest(BaseModel):
     user_id: int = 1
     recorded_at: datetime | None = None

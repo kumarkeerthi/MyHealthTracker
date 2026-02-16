@@ -39,6 +39,22 @@ type DashboardProps = {
     description: string;
     completed: boolean;
   };
+  recipeSuggestion: string;
+  carbLoadRemaining: number;
+  recipes: Array<{
+    id: number;
+    name: string;
+    ingredients: string;
+    macros: {
+      protein: number;
+      carbs: number;
+      fats: number;
+    };
+    cooking_time_minutes: number;
+    oil_usage_tsp: number;
+    insulin_score_impact: number;
+    external_links: string[];
+  }>;
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -130,6 +146,35 @@ export function Dashboard(props: DashboardProps) {
           <MacroBar label="Hidden Oil" value={props.oil} max={6} color="#ef4444" />
 
           <div className="glass-card p-4 text-sm">Chapati Counter: {props.chapatiCount}/{props.chapatiLimit}</div>
+
+          <section className="glass-card p-5">
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Smart meal suggestion</p>
+            <p className="mt-2 text-sm text-emerald-300">{props.recipeSuggestion}</p>
+            <p className="mt-1 text-xs text-slate-400">Carb load remaining: {props.carbLoadRemaining.toFixed(1)}g</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm uppercase tracking-[0.22em] text-slate-400">Recipe database</h2>
+            {props.recipes.slice(0, 5).map((recipe) => (
+              <div key={recipe.id} className="glass-card p-4">
+                <p className="text-sm font-semibold text-white">{recipe.name}</p>
+                <p className="mt-1 text-xs text-slate-300">{recipe.ingredients}</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  Macros P/C/F: {recipe.macros.protein}/{recipe.macros.carbs}/{recipe.macros.fats}g • {recipe.cooking_time_minutes}m • Oil {recipe.oil_usage_tsp} tsp
+                </p>
+                <p className="text-xs text-slate-400">Insulin score impact: {recipe.insulin_score_impact}</p>
+                {recipe.external_links.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                    {recipe.external_links.map((link) => (
+                      <a key={link} href={link} target="_blank" rel="noreferrer" className="text-electric underline">
+                        Recipe ref
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </section>
         </>
       ) : (
         <>

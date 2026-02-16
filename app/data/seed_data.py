@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FoodItem, MetabolicProfile, NotificationSettings, User
+from app.models import FoodItem, MetabolicProfile, NotificationSettings, Recipe, User
 
 
 FOOD_ITEMS = [
@@ -24,6 +24,70 @@ FOOD_ITEMS = [
     {"name": "Carrot", "protein": 0.9, "carbs": 9.6, "fats": 0.2, "glycemic_load": 4.0, "hidden_oil_estimate": 0.1},
     {"name": "Dark chocolate", "protein": 1.0, "carbs": 6.0, "fats": 5.0, "glycemic_load": 3.0, "hidden_oil_estimate": 0.0},
     {"name": "Milk coffee", "protein": 3.0, "carbs": 4.0, "fats": 2.0, "glycemic_load": 2.0, "hidden_oil_estimate": 0.0},
+]
+
+
+RECIPES = [
+    {
+        "name": "Spinach egg scramble",
+        "ingredients": "Spinach, whole eggs, onion, garlic, turmeric, chili, salt",
+        "protein": 20.0,
+        "carbs": 6.0,
+        "fats": 14.0,
+        "cooking_time_minutes": 12,
+        "oil_usage_tsp": 0.5,
+        "insulin_score_impact": 0.25,
+        "external_link_primary": "https://www.tarladalal.com/healthy-subzis-and-vegetables-recipes",
+        "external_link_secondary": "https://www.indianhealthyrecipes.com/",
+    },
+    {
+        "name": "Bhindi stir fry",
+        "ingredients": "Bhindi, onion, cumin, turmeric, coriander, salt",
+        "protein": 3.0,
+        "carbs": 10.0,
+        "fats": 4.0,
+        "cooking_time_minutes": 18,
+        "oil_usage_tsp": 0.75,
+        "insulin_score_impact": 0.45,
+        "external_link_primary": "https://www.tarladalal.com/healthy-subzis-and-vegetables-recipes",
+        "external_link_secondary": "https://www.vegrecipesofindia.com/bhindi-recipes/",
+    },
+    {
+        "name": "Paneer sauté",
+        "ingredients": "Paneer, capsicum, onion, cumin, pepper, salt",
+        "protein": 22.0,
+        "carbs": 7.0,
+        "fats": 18.0,
+        "cooking_time_minutes": 15,
+        "oil_usage_tsp": 0.75,
+        "insulin_score_impact": 0.35,
+        "external_link_primary": "https://www.tarladalal.com/healthy-subzis-and-vegetables-recipes",
+        "external_link_secondary": "https://www.indianhealthyrecipes.com/paneer-recipes/",
+    },
+    {
+        "name": "Broccoli lemon stir fry",
+        "ingredients": "Broccoli, garlic, lemon juice, pepper, salt",
+        "protein": 5.0,
+        "carbs": 9.0,
+        "fats": 3.0,
+        "cooking_time_minutes": 10,
+        "oil_usage_tsp": 0.5,
+        "insulin_score_impact": 0.3,
+        "external_link_primary": "https://www.tarladalal.com/healthy-subzis-and-vegetables-recipes",
+        "external_link_secondary": "https://www.indianhealthyrecipes.com/broccoli-recipes/",
+    },
+    {
+        "name": "Low oil sambar",
+        "ingredients": "Toor dal, mixed vegetables, tamarind, sambar powder, mustard, curry leaves",
+        "protein": 9.0,
+        "carbs": 16.0,
+        "fats": 4.0,
+        "cooking_time_minutes": 30,
+        "oil_usage_tsp": 0.5,
+        "insulin_score_impact": 0.55,
+        "external_link_primary": "https://www.tarladalal.com/healthy-subzis-and-vegetables-recipes",
+        "external_link_secondary": "https://www.indianhealthyrecipes.com/sambar-recipe-make-sambar/",
+    },
 ]
 
 
@@ -83,5 +147,10 @@ def seed_initial_data(db: Session) -> None:
     for food in FOOD_ITEMS:
         if food["name"] not in existing_food_names:
             db.add(FoodItem(**food))
+
+    existing_recipe_names = set(db.scalars(select(Recipe.name)).all())
+    for recipe in RECIPES:
+        if recipe["name"] not in existing_recipe_names:
+            db.add(Recipe(**recipe))
 
     db.commit()
