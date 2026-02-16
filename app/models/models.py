@@ -111,6 +111,27 @@ class NotificationSettings(Base):
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     silent_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    protein_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    fasting_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    hydration_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    insulin_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    strength_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    quiet_hours_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    quiet_hours_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(600), nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(String(255), nullable=False)
+    auth: Mapped[str] = mapped_column(String(255), nullable=False)
+    expiration_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -167,6 +188,8 @@ class DailyLog(Base):
     total_hdl_support: Mapped[float] = mapped_column(Float, default=0.0)
     total_triglyceride_risk: Mapped[float] = mapped_column(Float, default=0.0)
     total_hidden_oil: Mapped[float] = mapped_column(Float, default=0.0)
+    water_ml: Mapped[int] = mapped_column(Integer, default=0)
+    hydration_score: Mapped[float] = mapped_column(Float, default=0.0)
 
     user: Mapped["User"] = relationship(back_populates="daily_logs")
     meal_entries: Mapped[list["MealEntry"]] = relationship(back_populates="daily_log")

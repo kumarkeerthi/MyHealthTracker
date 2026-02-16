@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Metabolic OS icon">
+  <rect width="512" height="512" rx="112" fill="#161921" />
+  <path d="M256 84l124 84-28 162-96 102-96-102-28-162z" fill="none" stroke="#64748b" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M256 318V198" stroke="#10b981" stroke-width="22" stroke-linecap="round"/>
+  <path d="M256 146l54 66h-108z" fill="#10b981"/>
+  <path d="M126 318h78l18-34 28 52 32-70 20 52h84" fill="none" stroke="#2dd4bf" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

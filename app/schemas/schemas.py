@@ -34,6 +34,11 @@ class LogFoodResponse(BaseModel):
     remaining_carb_budget: float
     suggestions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    water_ml: int = 0
+    hydration_score: float = 0
+    hydration_target_min_ml: int = 2500
+    hydration_target_max_ml: int = 3000
+    hydration_target_achieved: bool = False
     validations: dict[str, bool]
 
 
@@ -235,6 +240,11 @@ class DailySummaryResponse(BaseModel):
     nuts_budget: float = 1
     remaining_carb_budget: float = 0
     warnings: list[str] = Field(default_factory=list)
+    water_ml: int = 0
+    hydration_score: float = 0
+    hydration_target_min_ml: int = 2500
+    hydration_target_max_ml: int = 3000
+    hydration_target_achieved: bool = False
     validations: dict[str, bool]
 
 
@@ -440,6 +450,13 @@ class NotificationSettingsResponse(BaseModel):
     push_enabled: bool
     email_enabled: bool
     silent_mode: bool
+    protein_reminders_enabled: bool
+    fasting_alerts_enabled: bool
+    hydration_alerts_enabled: bool
+    insulin_alerts_enabled: bool
+    strength_reminders_enabled: bool
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
 
 
 class UpdateNotificationSettingsRequest(BaseModel):
@@ -447,6 +464,49 @@ class UpdateNotificationSettingsRequest(BaseModel):
     push_enabled: bool | None = None
     email_enabled: bool | None = None
     silent_mode: bool | None = None
+    protein_reminders_enabled: bool | None = None
+    fasting_alerts_enabled: bool | None = None
+    hydration_alerts_enabled: bool | None = None
+    insulin_alerts_enabled: bool | None = None
+    strength_reminders_enabled: bool | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    user_id: int = 1
+    endpoint: str
+    expirationTime: datetime | None = None
+    keys: PushSubscriptionKeys
+    user_agent: str | None = None
+
+
+class PushSendRequest(BaseModel):
+    user_id: int = 1
+    title: str
+    body: str
+    payload: dict = Field(default_factory=dict)
+
+
+class HydrationLogRequest(BaseModel):
+    user_id: int = 1
+    amount_ml: int = Field(gt=0, le=2000)
+    log_date: date | None = None
+
+
+class HydrationLogResponse(BaseModel):
+    date: date
+    water_ml: int
+    hydration_score: float
+    hydration_target_min_ml: int
+    hydration_target_max_ml: int
+    hydration_target_achieved: bool
+    message: str
 
 
 class ChallengeResponse(BaseModel):

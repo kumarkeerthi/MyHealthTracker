@@ -10,6 +10,13 @@ export default async function NotificationSettingsPage() {
       push_enabled: true,
       email_enabled: false,
       silent_mode: false,
+      protein_reminders_enabled: true,
+      fasting_alerts_enabled: true,
+      hydration_alerts_enabled: true,
+      insulin_alerts_enabled: true,
+      strength_reminders_enabled: true,
+      quiet_hours_start: null,
+      quiet_hours_end: null,
     };
 
   return <NotificationSettingsForm initialSettings={settings} />;

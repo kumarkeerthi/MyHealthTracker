@@ -2,18 +2,21 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Metabolic Intelligence Engine',
+  title: 'Metabolic OS',
   description: 'Mobile-first metabolic dashboard',
-  manifest: '/manifest.webmanifest',
+  manifest: '/manifest.json',
+  icons: {
+    apple: '/apple-touch-icon.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'MIE',
+    title: 'MetOS',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#05070C',
+  themeColor: '#0f172a',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
