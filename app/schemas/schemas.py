@@ -223,3 +223,28 @@ class UpdateNotificationSettingsRequest(BaseModel):
     push_enabled: bool | None = None
     email_enabled: bool | None = None
     silent_mode: bool | None = None
+
+
+class ChallengeResponse(BaseModel):
+    challenge_id: int
+    frequency: str
+    title: str
+    description: str
+    goal_metric: str
+    goal_target: float
+    completed: bool
+    current_streak: int
+    longest_streak: int
+    banner_title: str
+
+
+class CompleteChallengeRequest(BaseModel):
+    challenge_id: int
+    user_id: int = 1
+
+
+class CoachingWaistResponse(BaseModel):
+    message: str
+    waist_change_cm: float
+    carb_ceiling_adjusted: bool
+    carb_ceiling: int

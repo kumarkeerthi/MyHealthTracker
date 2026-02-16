@@ -2,7 +2,7 @@ import { Dashboard } from '@/components/dashboard';
 import { getDashboardData } from '@/lib/api';
 
 export default async function Home() {
-  const { daily, profile, vitals, exercise } = await getDashboardData();
+  const { daily, profile, vitals, exercise, challenge, monthlyChallenge } = await getDashboardData();
 
   const insulin = Math.round(daily?.insulin_load_score ?? 38);
   const complianceSignals = [daily?.validations?.protein_minimum, daily?.validations?.carb_limit, daily?.validations?.oil_limit].filter(Boolean).length;
@@ -27,6 +27,19 @@ export default async function Home() {
       monkeyBarProgress={exercise?.monkey_bar_progress ?? { dead_hang_duration_seconds: 0, pull_up_count: 0, assisted_pull_up_reps: 0, grip_endurance_seconds: 0 }}
       weeklyStrengthGraph={exercise?.weekly_strength_graph ?? [0, 0, 0, 0, 0, 0, 0]}
       metabolicExerciseMessage={exercise?.metabolic_message ?? 'Strength momentum stable'}
+      challenge={challenge ?? {
+        title: 'Protein First Day',
+        description: 'Start each meal with protein to reduce glucose spikes.',
+        current_streak: 0,
+        longest_streak: 0,
+        completed: false,
+        banner_title: '7 Day Insulin Control Challenge',
+      }}
+      monthlyChallenge={monthlyChallenge ?? {
+        title: '10k Step Day',
+        description: 'Complete at least 20 days above 10k steps this month.',
+        completed: false,
+      }}
     />
   );
 }

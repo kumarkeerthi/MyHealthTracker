@@ -5,9 +5,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import DailyLog, ExerciseCategory, ExerciseEntry, FoodItem, InsulinScore, MealEntry, User, VitalsEntry
+from app.models import (
+    ChallengeAssignment,
+    ChallengeFrequency,
+    DailyLog,
+    ExerciseCategory,
+    ExerciseEntry,
+    FoodItem,
+    InsulinScore,
+    MealEntry,
+    User,
+    VitalsEntry,
+)
 from app.schemas.schemas import (
     AppleHealthImportRequest,
+    ChallengeResponse,
+    CoachingWaistResponse,
+    CompleteChallengeRequest,
     CoachingMessageResponse,
     DailySummaryResponse,
     ExerciseSummaryResponse,
@@ -27,6 +41,7 @@ from app.schemas.schemas import (
     WeeklySummaryResponse,
 )
 from app.services.apple_health_service import AppleHealthService
+from app.services.challenge_engine import ChallengeEngine
 from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
 from app.services.notification_service import notification_service
@@ -204,8 +219,46 @@ def log_vitals(payload: LogVitalsRequest, db: Session = Depends(get_db)):
         body_fat_percentage=payload.body_fat_percentage,
     )
     db.add(vitals)
+    db.flush()
+
+    prior_waist = db.scalar(
+        select(VitalsEntry.waist_cm)
+        .where(VitalsEntry.user_id == payload.user_id, VitalsEntry.id != vitals.id, VitalsEntry.waist_cm.is_not(None))
+        .order_by(VitalsEntry.recorded_at.desc())
+        .limit(1)
+    )
+
+    user = db.get(User, payload.user_id)
+    profile = get_or_create_metabolic_profile(db, user)
+
+    coaching_message = "Waist unchanged. Stay consistent with your current plan."
+    waist_change_cm = 0.0
+    carb_ceiling_adjusted = False
+
+    if payload.waist_cm is not None and prior_waist is not None:
+        waist_change_cm = round(payload.waist_cm - prior_waist, 2)
+        if waist_change_cm < 0:
+            coaching_message = f"Great work — waist dropped by {abs(waist_change_cm):.2f} cm. Keep the momentum!"
+        elif waist_change_cm > 0:
+            old_ceiling = profile.carb_ceiling
+            profile.carb_ceiling = max(20, profile.carb_ceiling - 10)
+            user.carb_ceiling = profile.carb_ceiling
+            carb_ceiling_adjusted = profile.carb_ceiling != old_ceiling
+            coaching_message = (
+                f"Waist increased by {waist_change_cm:.2f} cm. Tightening carb ceiling to {profile.carb_ceiling}g for recovery."
+            )
+
     db.commit()
-    return {"status": "ok", "vitals_entry_id": vitals.id}
+    return {
+        "status": "ok",
+        "vitals_entry_id": vitals.id,
+        "coaching": CoachingWaistResponse(
+            message=coaching_message,
+            waist_change_cm=waist_change_cm,
+            carb_ceiling_adjusted=carb_ceiling_adjusted,
+            carb_ceiling=profile.carb_ceiling,
+        ).model_dump(),
+    }
 
 
 @router.post("/log-exercise")
@@ -400,6 +453,65 @@ def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends
     result = service.ingest(user, payload.model_dump())
     return {"status": "ok", **result}
 
+
+
+
+def _challenge_payload(challenge: ChallengeAssignment, current_streak: int, longest_streak: int) -> ChallengeResponse:
+    return ChallengeResponse(
+        challenge_id=challenge.id,
+        frequency=challenge.frequency.value,
+        title=challenge.challenge_name,
+        description=challenge.challenge_description,
+        goal_metric=challenge.goal_metric,
+        goal_target=challenge.goal_target,
+        completed=challenge.completed,
+        current_streak=current_streak,
+        longest_streak=longest_streak,
+        banner_title="7 Day Insulin Control Challenge",
+    )
+
+
+@router.get("/challenge", response_model=ChallengeResponse)
+def get_daily_challenge(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    engine = ChallengeEngine(db)
+    challenge = engine.assign_for_today(user, ChallengeFrequency.DAILY)
+    streak = engine.get_or_create_streak(user.id, ChallengeFrequency.DAILY)
+    db.commit()
+    return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
+
+
+@router.get("/challenge/monthly", response_model=ChallengeResponse)
+def get_monthly_challenge(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    engine = ChallengeEngine(db)
+    challenge = engine.assign_for_today(user, ChallengeFrequency.MONTHLY)
+    streak = engine.get_or_create_streak(user.id, ChallengeFrequency.MONTHLY)
+    db.commit()
+    return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
+
+
+@router.post("/challenge/complete", response_model=ChallengeResponse)
+def complete_challenge(payload: CompleteChallengeRequest, db: Session = Depends(get_db)):
+    challenge = db.scalar(
+        select(ChallengeAssignment).where(
+            ChallengeAssignment.id == payload.challenge_id,
+            ChallengeAssignment.user_id == payload.user_id,
+        )
+    )
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    engine = ChallengeEngine(db)
+    streak = engine.mark_completed(challenge)
+    db.commit()
+    return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
 
 @router.post("/external-event")
 def external_event(payload: dict):

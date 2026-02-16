@@ -32,6 +32,19 @@ export type ExerciseSummary = {
   weekly_strength_graph: number[];
 };
 
+export type Challenge = {
+  challenge_id: number;
+  frequency: string;
+  title: string;
+  description: string;
+  goal_metric: string;
+  goal_target: number;
+  completed: boolean;
+  current_streak: number;
+  longest_streak: number;
+  banner_title: string;
+};
+
 export type NotificationSettings = {
   user_id: number;
   whatsapp_enabled: boolean;
@@ -55,11 +68,13 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
     readJson<ExerciseSummary>('/exercise-summary?user_id=1'),
+    readJson<Challenge>('/challenge?user_id=1'),
+    readJson<Challenge>('/challenge/monthly?user_id=1'),
   ]);
 
   return {
@@ -67,6 +82,8 @@ export async function getDashboardData() {
     profile,
     vitals,
     exercise,
+    challenge,
+    monthlyChallenge,
   };
 }
 
