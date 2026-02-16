@@ -24,6 +24,9 @@ docker compose up --build
 ```
 
 API available at: `http://localhost:8000`
+Frontend available at: `http://localhost:3000`
+
+For an end-to-end first-time setup (env vars + Docker), follow `FIRST_TIME_DOCKER_SETUP.md`.
 
 ## Endpoints
 Existing:

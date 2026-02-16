@@ -3,12 +3,17 @@ services:
   api:
     build: .
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+psycopg2://metabolic:metabolic@db:5432/metabolic
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://metabolic:metabolic@db:5432/metabolic}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      - REQUIRE_HTTPS=${REQUIRE_HTTPS:-false}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - .:/app
     healthcheck:
@@ -31,13 +36,33 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-      POSTGRES_DB: metabolic
-      POSTGRES_USER: metabolic
-      POSTGRES_PASSWORD: metabolic
+      POSTGRES_DB: ${POSTGRES_DB:-metabolic}
+      POSTGRES_USER: ${POSTGRES_USER:-metabolic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-metabolic}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-metabolic} -d ${POSTGRES_DB:-metabolic}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
