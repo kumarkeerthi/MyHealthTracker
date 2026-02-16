@@ -21,6 +21,12 @@ export type DailySummary = {
     carb_limit: boolean;
     oil_limit: boolean;
   };
+  dinner_logged: boolean;
+  dinner_carbs: number;
+  dinner_protein: number;
+  dinner_mode: string | null;
+  dinner_insulin_impact: number;
+  evening_insulin_spike_risk: boolean;
 };
 
 export type Profile = {

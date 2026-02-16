@@ -234,6 +234,9 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     log_date = payload.consumed_at.date()
     daily_log = _get_or_create_daily_log(db, payload.user_id, log_date)
 
+    meal_context = payload.meal_context.lower().strip()
+    is_dinner = meal_context == "dinner"
+
     for entry in payload.entries:
         db.add(
             MealEntry(
@@ -285,10 +288,22 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     daily_log.total_hdl_support = totals["hdl_support"]
     daily_log.total_triglyceride_risk = totals["triglyceride_risk"]
     daily_log.total_hidden_oil = totals["hidden_oil"]
+
+    if is_dinner:
+        dinner_payload = {
+            "carbs": round(sum(entry.food_item.carbs * entry.servings for entry in meal_entries if entry.consumed_at.date() == log_date and entry.consumed_at == payload.consumed_at), 2),
+            "protein": round(sum(entry.food_item.protein * entry.servings for entry in meal_entries if entry.consumed_at.date() == log_date and entry.consumed_at == payload.consumed_at), 2),
+        }
+        daily_log.dinner_meal = dinner_payload
+        daily_log.dinner_mode = payload.dinner_mode
+        daily_log.dinner_logged_at = payload.consumed_at
+
     db.flush()
 
     daily_log = db.scalar(select(DailyLog).options(joinedload(DailyLog.user), joinedload(DailyLog.meal_entries)).where(DailyLog.id == daily_log.id))
     status = evaluate_daily_status(db, daily_log, profile)
+    daily_log.dinner_insulin_impact = status.get("dinner_insulin_impact", 0.0)
+    daily_log.evening_insulin_spike_risk = status.get("evening_insulin_spike_risk", False)
 
     db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
     alerts = notification_service.evaluate_daily_alerts(db, payload.user_id, daily_log, status["insulin_load_score"])
@@ -320,6 +335,8 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
         warnings.append("High insulin fruit for current triglyceride level.")
     if daily_log.total_carbs >= profile.carb_ceiling and any(entry.food_item.name.lower() == "mango" for entry in meal_entries):
         warnings.append("High triglyceride risk.")
+    if daily_log.evening_insulin_spike_risk:
+        warnings.append("Evening insulin spike risk")
 
     validations = {
         "carb_limit": validate_carb_limit(totals["carbs"], profile.carb_ceiling),
@@ -345,6 +362,12 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
         suggestions=suggestions,
         warnings=warnings,
         validations=validations,
+        dinner_logged=bool(daily_log.dinner_meal),
+        dinner_carbs=float((daily_log.dinner_meal or {}).get("carbs", 0.0)),
+        dinner_protein=float((daily_log.dinner_meal or {}).get("protein", 0.0)),
+        dinner_mode=daily_log.dinner_mode,
+        dinner_insulin_impact=daily_log.dinner_insulin_impact,
+        evening_insulin_spike_risk=daily_log.evening_insulin_spike_risk,
     )
 
 
@@ -402,6 +425,12 @@ def daily_summary(
         hydration_target_max_ml=HYDRATION_TARGET_MAX_ML,
         hydration_target_achieved=daily_log.water_ml >= HYDRATION_TARGET_MIN_ML,
         validations=validations,
+        dinner_logged=bool(daily_log.dinner_meal),
+        dinner_carbs=float((daily_log.dinner_meal or {}).get("carbs", 0.0)),
+        dinner_protein=float((daily_log.dinner_meal or {}).get("protein", 0.0)),
+        dinner_mode=daily_log.dinner_mode,
+        dinner_insulin_impact=daily_log.dinner_insulin_impact,
+        evening_insulin_spike_risk=daily_log.evening_insulin_spike_risk,
     )
 
 

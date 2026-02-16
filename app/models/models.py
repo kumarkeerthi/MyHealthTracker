@@ -269,6 +269,11 @@ class DailyLog(Base):
     total_hidden_oil: Mapped[float] = mapped_column(Float, default=0.0)
     water_ml: Mapped[int] = mapped_column(Integer, default=0)
     hydration_score: Mapped[float] = mapped_column(Float, default=0.0)
+    dinner_meal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    dinner_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    dinner_logged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dinner_insulin_impact: Mapped[float] = mapped_column(Float, default=0.0)
+    evening_insulin_spike_risk: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User"] = relationship(back_populates="daily_logs")
     meal_entries: Mapped[list["MealEntry"]] = relationship(back_populates="daily_log")

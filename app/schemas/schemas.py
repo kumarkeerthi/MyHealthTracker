@@ -15,6 +15,8 @@ class LogFoodRequest(BaseModel):
     user_id: int = 1
     consumed_at: datetime
     entries: list[MealEntryInput]
+    meal_context: str = "general"
+    dinner_mode: str | None = None
 
 
 class LogFoodResponse(BaseModel):
@@ -40,6 +42,12 @@ class LogFoodResponse(BaseModel):
     hydration_target_max_ml: int = 3000
     hydration_target_achieved: bool = False
     validations: dict[str, bool]
+    dinner_logged: bool = False
+    dinner_carbs: float = 0
+    dinner_protein: float = 0
+    dinner_mode: str | None = None
+    dinner_insulin_impact: float = 0
+    evening_insulin_spike_risk: bool = False
 
 
 
@@ -246,6 +254,13 @@ class DailySummaryResponse(BaseModel):
     hydration_target_max_ml: int = 3000
     hydration_target_achieved: bool = False
     validations: dict[str, bool]
+    dinner_logged: bool = False
+    dinner_carbs: float = 0
+    dinner_protein: float = 0
+    dinner_mode: str | None = None
+    dinner_insulin_impact: float = 0
+    evening_insulin_spike_risk: bool = False
+
 
 
 class WeeklySummaryResponse(BaseModel):

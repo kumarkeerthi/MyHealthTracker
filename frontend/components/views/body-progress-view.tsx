@@ -10,7 +10,9 @@ export function BodyProgressView({ bodyState }: { bodyState: BodyVisualState }) 
         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Body Progress View</p>
         <motion.div className="relative mx-auto mt-3 w-52" {...pulseTransition}>
           <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/10 to-transparent blur-2xl" />
-          <NeutralBodyOutline state={bodyState} />
+          <motion.div animate={{ scaleX: bodyState.waistScale }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
+            <NeutralBodyOutline state={bodyState} />
+          </motion.div>
         </motion.div>
         <p className="mt-3 text-xs text-slate-300">Waist shape updates weekly with smooth transitions.</p>
       </div>
@@ -22,7 +24,9 @@ export function BodyProgressView({ bodyState }: { bodyState: BodyVisualState }) 
         </div>
         <div className="glass-card p-4">
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Current</p>
-          <NeutralBodyOutline state={bodyState} className="mx-auto mt-2 w-28" />
+          <motion.div animate={{ scaleX: bodyState.waistScale }} transition={{ duration: 0.32 }}>
+            <NeutralBodyOutline state={bodyState} className="mx-auto mt-2 w-28" />
+          </motion.div>
         </div>
       </div>
     </section>
