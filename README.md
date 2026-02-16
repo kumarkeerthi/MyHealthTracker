@@ -40,6 +40,19 @@ Added:
 - `GET /vitals-summary`
 - `POST /import-apple-health`
 - `POST /external-event`
+- `POST /llm/analyze`
+
+
+
+## LLM integration (Phase 3)
+Set OpenAI credentials before starting API:
+```bash
+export OPENAI_API_KEY=<your_key>
+export OPENAI_MODEL=gpt-4o-mini
+export LLM_CACHE_TTL_SECONDS=900
+```
+
+`POST /llm/analyze` extracts food items, portion and estimated macros via strict JSON schema, then enforces deterministic fasting/carb/oil rules. If LLM fails, the service falls back to local food-catalog matching.
 
 ## Dev run
 ```bash

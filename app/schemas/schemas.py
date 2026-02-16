@@ -27,6 +27,24 @@ class LogFoodResponse(BaseModel):
     validations: dict[str, bool]
 
 
+
+
+class LLMAnalyzeRequest(BaseModel):
+    user_id: int = 1
+    text: str = Field(min_length=1)
+    consumed_at: datetime | None = None
+
+
+class LLMAnalyzeResponse(BaseModel):
+    approval_status: str
+    reasoning: str
+    insulin_load_delta: float
+    recommended_adjustment: str
+    food_items: list[str] = Field(default_factory=list)
+    portion: str
+    estimated_macros: dict[str, float]
+    source: str
+
 class LogVitalsRequest(BaseModel):
     user_id: int = 1
     recorded_at: datetime | None = None
