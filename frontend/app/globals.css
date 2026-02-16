@@ -11,6 +11,12 @@
 }
 
 body {
-  background: radial-gradient(circle at top, #121a2c 0%, #05070c 55%);
+  background: radial-gradient(circle at top, rgba(59, 130, 246, 0.22) 0%, #0f172a 55%);
   min-height: 100vh;
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-2xl border border-white/15 bg-white/5 shadow-glow backdrop-blur-xl;
+  }
 }
