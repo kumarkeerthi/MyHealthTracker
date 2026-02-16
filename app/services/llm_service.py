@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Lock
@@ -20,6 +21,10 @@ from app.services.rule_engine import validate_carb_limit, validate_fasting_windo
 class CachedLLMResponse:
     payload: dict[str, Any]
     expires_at: float
+
+
+EXPECTED_LLM_KEYS = {"food_items", "portion", "estimated_macros", "reasoning"}
+EXPECTED_MACRO_KEYS = {"protein", "carbs", "fats", "hidden_oil"}
 
 
 class LLMService:
@@ -174,6 +179,7 @@ class LLMService:
                 {"role": "user", "content": text},
             ],
             "temperature": 0,
+            "max_tokens": settings.llm_max_tokens,
         }
 
         http_request = request.Request(
@@ -205,8 +211,43 @@ class LLMService:
         except json.JSONDecodeError:
             return None
 
-        parsed["source"] = "llm"
-        return parsed
+        validated = self._validate_structured_output(parsed)
+        if validated is None:
+            return None
+        validated["source"] = "llm"
+        return validated
+
+    def _validate_structured_output(self, payload: Any) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        if set(payload.keys()) != EXPECTED_LLM_KEYS:
+            return None
+
+        food_items = payload.get("food_items")
+        portion = payload.get("portion")
+        estimated = payload.get("estimated_macros")
+        reasoning = payload.get("reasoning")
+
+        if not isinstance(food_items, list) or not all(isinstance(item, str) for item in food_items):
+            return None
+        if not isinstance(portion, str) or not isinstance(reasoning, str):
+            return None
+        if not isinstance(estimated, dict) or set(estimated.keys()) != EXPECTED_MACRO_KEYS:
+            return None
+
+        cleaned_macros: dict[str, float] = {}
+        for key, value in estimated.items():
+            if not isinstance(value, (int, float)):
+                return None
+            cleaned_macros[key] = max(0.0, round(float(value), 2))
+
+        clean_items = [re.sub(r"[^a-zA-Z0-9\-\s]", "", item).strip()[:60] for item in food_items if item.strip()]
+        return {
+            "food_items": clean_items[:10],
+            "portion": portion.strip()[:120],
+            "estimated_macros": cleaned_macros,
+            "reasoning": reasoning.strip()[:500],
+        }
 
     def summarize_metabolic_advisor_report(
         self,
@@ -267,6 +308,7 @@ class LLMService:
                 {"role": "user", "content": json.dumps(prompt)},
             ],
             "temperature": 0.2,
+            "max_tokens": settings.llm_max_tokens,
         }
 
         http_request = request.Request(

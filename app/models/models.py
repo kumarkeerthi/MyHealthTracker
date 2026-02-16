@@ -130,6 +130,32 @@ class PasswordResetToken(Base):
     user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
 
 
+
+
+class SecurityAuditLog(Base):
+    __tablename__ = "security_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(20), default="info", nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    route: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class LLMUsageDaily(Base):
+    __tablename__ = "llm_usage_daily"
+    __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_llm_usage_daily_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class MetabolicProfile(Base):
     __tablename__ = "metabolic_profiles"
 

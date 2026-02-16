@@ -6,7 +6,15 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.security import RateLimitRule, SlidingWindowLimiter, get_current_token_claims, llm_usage_limiter, require_admin, sanitize_text
+from app.core.security import (
+    RateLimitRule,
+    SlidingWindowLimiter,
+    get_current_token_claims,
+    has_prompt_injection_risk,
+    llm_usage_limiter,
+    require_admin,
+    sanitize_text,
+)
 from app.models import (
     ChallengeAssignment,
     ChallengeFrequency,
@@ -17,6 +25,7 @@ from app.models import (
     InsulinScore,
     MealEntry,
     User,
+    LLMUsageDaily,
     VitalsEntry,
     Recipe,
 )
@@ -79,6 +88,7 @@ from app.services.habit_intelligence_engine import habit_intelligence_engine
 from app.services.metabolic_phase_service import metabolic_phase_service
 from app.services.movement_engine import movement_engine
 from app.services.auth_service import auth_service
+from app.services.audit_service import audit_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -126,6 +136,32 @@ def _get_or_create_daily_log(db: Session, user_id: int, log_date):
 
 
 login_rate_limiter = SlidingWindowLimiter()
+
+
+def _increment_llm_daily_usage(db: Session, user_id: int, route: str, ip_address: str | None) -> bool:
+    usage = db.scalar(select(LLMUsageDaily).where(LLMUsageDaily.user_id == user_id, LLMUsageDaily.usage_date == date.today()))
+    if not usage:
+        usage = LLMUsageDaily(user_id=user_id, usage_date=date.today(), request_count=0)
+        db.add(usage)
+        db.flush()
+
+    if usage.request_count >= settings.llm_requests_per_day:
+        audit_service.log_event(
+            db,
+            event_type="excess_llm_calls",
+            severity="warning",
+            user_id=user_id,
+            ip_address=ip_address,
+            route=route,
+            details={"daily_count": usage.request_count, "daily_limit": settings.llm_requests_per_day},
+        )
+        db.commit()
+        return False
+
+    usage.request_count += 1
+    usage.updated_at = datetime.utcnow()
+    db.flush()
+    return True
 
 
 @router.post("/auth/login", response_model=AuthTokenResponse)
@@ -997,6 +1033,7 @@ def hydration_log(payload: HydrationLogRequest, db: Session = Depends(get_db)):
 
 @router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)
 def analyze_food_image(
+    request: Request,
     image: UploadFile = File(...),
     user_id: int = Form(default=1),
     meal_context: str | None = Form(default=None),
@@ -1014,6 +1051,21 @@ def analyze_food_image(
         raise HTTPException(status_code=400, detail="Image file is empty")
     if len(image_bytes) > settings.max_food_image_bytes:
         raise HTTPException(status_code=413, detail=f"Image exceeds limit of {settings.max_food_image_bytes} bytes")
+
+    allowed_mime_types = {"image/jpeg", "image/png", "image/webp"}
+    content_type = (image.content_type or "").lower()
+    if content_type not in allowed_mime_types:
+        audit_service.log_event(
+            db,
+            event_type="suspicious_upload",
+            severity="warning",
+            user_id=user_id,
+            ip_address=request.client.host if request.client else "unknown",
+            route="/analyze-food-image",
+            details={"content_type": content_type, "filename": image.filename},
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="Unsupported image MIME type")
 
     safe_context = sanitize_text(meal_context) if meal_context else None
     return food_image_service.analyze_food_image(db, user, profile, image_bytes, safe_context, consumed_at)
@@ -1042,18 +1094,47 @@ def confirm_food_image_log(payload: ConfirmFoodImageLogRequest, db: Session = De
 
 
 @router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
-def llm_analyze(payload: LLMAnalyzeRequest, db: Session = Depends(get_db)):
+def llm_analyze(payload: LLMAnalyzeRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
     if not llm_usage_limiter.check_and_increment(payload.user_id, settings.llm_requests_per_hour):
+        audit_service.log_event(
+            db,
+            event_type="excess_llm_calls",
+            severity="warning",
+            user_id=payload.user_id,
+            ip_address=client_ip,
+            route="/llm/analyze",
+            details={"scope": "hourly"},
+        )
+        db.commit()
         raise HTTPException(status_code=429, detail="Hourly LLM usage limit reached")
+
+    if not _increment_llm_daily_usage(db, payload.user_id, "/llm/analyze", client_ip):
+        raise HTTPException(status_code=429, detail="Daily LLM usage limit reached")
 
     user = db.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    truncated = payload.text[: settings.llm_max_input_chars]
+    safe_text = sanitize_text(truncated)
+    if has_prompt_injection_risk(safe_text):
+        audit_service.log_event(
+            db,
+            event_type="suspicious_prompt",
+            severity="warning",
+            user_id=payload.user_id,
+            ip_address=client_ip,
+            route="/llm/analyze",
+            details={"text_preview": safe_text[:120]},
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="Prompt rejected by safety policy")
+
     profile = get_or_create_metabolic_profile(db, user)
     consumed_at = payload.consumed_at or datetime.utcnow()
-    safe_text = sanitize_text(payload.text)
     analysis = llm_service.analyze(db, user, profile, safe_text, consumed_at)
+    db.commit()
     return LLMAnalyzeResponse(**analysis)
 
 

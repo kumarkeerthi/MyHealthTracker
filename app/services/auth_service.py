@@ -14,6 +14,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models import AuthLoginAttempt, AuthRefreshToken, PasswordResetToken, User
+from app.services.audit_service import audit_service
 
 
 class AuthService:
@@ -23,11 +24,28 @@ class AuthService:
 
         if not user:
             db.add(AuthLoginAttempt(email=email.lower().strip(), ip_address=ip_address, success=False))
+            audit_service.log_event(
+                db,
+                event_type="failed_login",
+                severity="warning",
+                ip_address=ip_address,
+                route="/auth/login",
+                details={"email": email.lower().strip(), "reason": "user_not_found"},
+            )
             db.commit()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
         if user.locked_until and user.locked_until > now:
             db.add(AuthLoginAttempt(user_id=user.id, email=user.email, ip_address=ip_address, success=False))
+            audit_service.log_event(
+                db,
+                event_type="failed_login",
+                severity="warning",
+                user_id=user.id,
+                ip_address=ip_address,
+                route="/auth/login",
+                details={"reason": "account_locked"},
+            )
             db.commit()
             raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Account temporarily locked")
 
@@ -36,12 +54,29 @@ class AuthService:
             if user.failed_login_attempts >= 5:
                 user.locked_until = now + timedelta(minutes=30)
             db.add(AuthLoginAttempt(user_id=user.id, email=user.email, ip_address=ip_address, success=False))
+            audit_service.log_event(
+                db,
+                event_type="failed_login",
+                severity="warning",
+                user_id=user.id,
+                ip_address=ip_address,
+                route="/auth/login",
+                details={"reason": "invalid_password", "failed_attempts": user.failed_login_attempts},
+            )
             db.commit()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
         user.failed_login_attempts = 0
         user.locked_until = None
         db.add(AuthLoginAttempt(user_id=user.id, email=user.email, ip_address=ip_address, success=True))
+        audit_service.log_event(
+            db,
+            event_type="login_success",
+            severity="info",
+            user_id=user.id,
+            ip_address=ip_address,
+            route="/auth/login",
+        )
 
         access_token = create_access_token(user_id=user.id, role=user.role)
         refresh_token = create_refresh_token(user_id=user.id, role=user.role)
