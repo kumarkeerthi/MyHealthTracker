@@ -107,6 +107,40 @@ export type AdvancedAnalytics = {
   };
 };
 
+
+
+export type HabitFailurePattern = {
+  reason: string;
+  count: number;
+};
+
+export type HabitStat = {
+  habit_id: number;
+  code: string;
+  name: string;
+  description: string;
+  challenge_type: string;
+  recommended_challenge_type: string;
+  current_streak: number;
+  longest_streak: number;
+  success_rate: number;
+  failures: number;
+  failure_patterns: HabitFailurePattern[];
+};
+
+export type HabitHeatmapCell = {
+  date: string;
+  intensity: number;
+  count: number;
+};
+
+export type HabitIntelligence = {
+  habits: HabitStat[];
+  heatmap: HabitHeatmapCell[];
+  insights: string[];
+  overall_success_rate: number;
+};
+
 export type RecipeSuggestion = {
   user_id: number;
   carb_load_remaining: number;
@@ -129,7 +163,7 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
@@ -139,6 +173,7 @@ export async function getDashboardData() {
     readJson<Recipe[]>('/recipes'),
     readJson<RecipeSuggestion>('/recipes/suggestions?user_id=1'),
     readJson<AdvancedAnalytics>('/analytics/advanced?user_id=1&days=30'),
+    readJson<HabitIntelligence>('/habits/intelligence?user_id=1&days=90'),
   ]);
 
   return {
@@ -151,6 +186,7 @@ export async function getDashboardData() {
     recipes,
     recipeSuggestion,
     analytics,
+    habitIntelligence,
   };
 }
 

@@ -37,6 +37,7 @@ class User(Base):
     challenge_assignments: Mapped[list["ChallengeAssignment"]] = relationship(back_populates="user")
     challenge_streaks: Mapped[list["ChallengeStreak"]] = relationship(back_populates="user")
     metabolic_recommendation_logs: Mapped[list["MetabolicRecommendationLog"]] = relationship(back_populates="user")
+    habit_checkins: Mapped[list["HabitCheckin"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -49,6 +50,12 @@ class ExerciseCategory(str, Enum):
 class ChallengeFrequency(str, Enum):
     DAILY = "DAILY"
     MONTHLY = "MONTHLY"
+
+
+class HabitChallengeType(str, Enum):
+    STRICT = "STRICT"
+    MICRO = "MICRO"
+    SUPPORT = "SUPPORT"
 
 
 class MetabolicProfile(Base):
@@ -284,3 +291,42 @@ class ChallengeStreak(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="challenge_streaks")
+
+
+class HabitDefinition(Base):
+    __tablename__ = "habit_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(140), nullable=False)
+    description: Mapped[str] = mapped_column(String(280), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    challenge_type: Mapped[HabitChallengeType] = mapped_column(
+        SqlEnum(HabitChallengeType, name="habit_challenge_type_enum"),
+        default=HabitChallengeType.STRICT,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    checkins: Mapped[list["HabitCheckin"]] = relationship(back_populates="habit")
+
+
+class HabitCheckin(Base):
+    __tablename__ = "habit_checkins"
+    __table_args__ = (UniqueConstraint("user_id", "habit_id", "habit_date", name="uq_user_habit_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    habit_id: Mapped[int] = mapped_column(ForeignKey("habit_definitions.id"), nullable=False)
+    habit_date: Mapped[date] = mapped_column(Date, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    failure_reason: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    challenge_type_used: Mapped[HabitChallengeType] = mapped_column(
+        SqlEnum(HabitChallengeType, name="habit_checkin_challenge_type_enum"),
+        default=HabitChallengeType.STRICT,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="habit_checkins")
+    habit: Mapped["HabitDefinition"] = relationship(back_populates="checkins")

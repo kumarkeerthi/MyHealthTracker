@@ -6,6 +6,9 @@ from app.models.models import (
     ExerciseCategory,
     ExerciseEntry,
     FoodItem,
+    HabitChallengeType,
+    HabitCheckin,
+    HabitDefinition,
     InsulinScore,
     MealEntry,
     MetabolicRecommendationLog,
@@ -32,4 +35,7 @@ __all__ = [
     "InsulinScore",
     "NotificationSettings",
     "Recipe",
+    "HabitChallengeType",
+    "HabitDefinition",
+    "HabitCheckin",
 ]

@@ -49,6 +49,7 @@ from app.schemas.schemas import (
     ConfirmFoodImageLogRequest,
     ConfirmFoodImageLogResponse,
     AdvancedAnalyticsResponse,
+    HabitIntelligenceResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -59,6 +60,7 @@ from app.services.metabolic_advisor_service import metabolic_advisor_service
 from app.services.food_image_service import food_image_service
 from app.services.recipe_service import recipe_service
 from app.services.analytics_engine import analytics_engine
+from app.services.habit_intelligence_engine import habit_intelligence_engine
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -563,6 +565,20 @@ def get_daily_challenge(user_id: int = Query(default=1), db: Session = Depends(g
     streak = engine.get_or_create_streak(user.id, ChallengeFrequency.DAILY)
     db.commit()
     return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
+
+
+@router.get("/habits/intelligence", response_model=HabitIntelligenceResponse)
+def get_habit_intelligence(
+    user_id: int = Query(default=1),
+    days: int = Query(default=90, ge=7, le=365),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    summary = habit_intelligence_engine.summarize(db, user_id=user_id, days=days)
+    return HabitIntelligenceResponse(**summary)
 
 
 @router.get("/challenge/monthly", response_model=ChallengeResponse)
