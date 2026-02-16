@@ -42,12 +42,14 @@ from app.schemas.schemas import (
     VitalsSummaryResponse,
     WhatsAppMessageRequest,
     WeeklySummaryResponse,
+    MetabolicAdvisorReportResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
 from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
 from app.services.notification_service import notification_service
+from app.services.metabolic_advisor_service import metabolic_advisor_service
 from app.services.recipe_service import recipe_service
 from app.services.rule_engine import (
     calculate_daily_macros,
@@ -358,6 +360,32 @@ def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
         avg_fats=round(sum(log.total_fats for log in logs) / days, 2),
         avg_hidden_oil=round(sum(log.total_hidden_oil for log in logs) / days, 2),
         avg_insulin_load_score=round(sum(score_rows) / len(score_rows), 2) if score_rows else 0,
+    )
+
+
+@router.get("/metabolic-advisor-report", response_model=MetabolicAdvisorReportResponse)
+def metabolic_advisor_report(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    report = metabolic_advisor_service.get_latest_report(db, user_id)
+    if not report:
+        report = metabolic_advisor_service.run_weekly_recommendations(db, user_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return MetabolicAdvisorReportResponse(
+        user_id=report.user_id,
+        week_start=report.week_start,
+        week_end=report.week_end,
+        waist_not_dropping=report.waist_not_dropping,
+        strength_increasing=report.strength_increasing,
+        carb_ceiling_before=report.carb_ceiling_before,
+        carb_ceiling_after=report.carb_ceiling_after,
+        protein_target_min_before=report.protein_target_min_before,
+        protein_target_min_after=report.protein_target_min_after,
+        recommend_strength_volume_increase=report.recommend_strength_volume_increase,
+        allow_refeed_meal=report.allow_refeed_meal,
+        recommendations=report.recommendations,
+        advisor_report=report.advisor_report,
+        created_at=report.created_at,
     )
 
 

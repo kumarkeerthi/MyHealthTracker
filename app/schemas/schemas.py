@@ -164,6 +164,23 @@ class WeeklySummaryResponse(BaseModel):
     avg_insulin_load_score: float
 
 
+class MetabolicAdvisorReportResponse(BaseModel):
+    user_id: int
+    week_start: date
+    week_end: date
+    waist_not_dropping: bool
+    strength_increasing: bool
+    carb_ceiling_before: int
+    carb_ceiling_after: int
+    protein_target_min_before: int
+    protein_target_min_after: int
+    recommend_strength_volume_increase: bool
+    allow_refeed_meal: bool
+    recommendations: str
+    advisor_report: str
+    created_at: datetime
+
+
 class AppleHealthImportRequest(BaseModel):
     user_id: int = 1
     health_export: dict | None = None
