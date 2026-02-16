@@ -1,10 +1,14 @@
 import Foundation
+import CryptoKit
 
 @MainActor
 final class SyncManager: ObservableObject {
     @Published private(set) var pendingCount: Int = 0
 
     private let encoder = JSONEncoder()
+    private var syncTimestamps: [Date] = []
+
+    private let signatureSecret = "CHANGE_ME_HEALTH_SYNC"
 
     init() {
         encoder.dateEncodingStrategy = .iso8601
@@ -37,6 +41,28 @@ final class SyncManager: ObservableObject {
 
         OfflineStore.shared.remove(ids: uploaded)
         pendingCount = OfflineStore.shared.all().count
+    }
+
+    func canSyncHealthDataNow() -> Bool {
+        let now = Date()
+        let oneHourAgo = now.addingTimeInterval(-3600)
+        syncTimestamps = syncTimestamps.filter { $0 >= oneHourAgo }
+        return syncTimestamps.count < 10
+    }
+
+    func markSyncPerformed() {
+        syncTimestamps.append(Date())
+    }
+
+    func signedHeaders(for body: Data) -> [String: String] {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let prefix = "\(timestamp).".data(using: .utf8) ?? Data()
+        let signatureBytes = HMAC<SHA256>.authenticationCode(for: prefix + body, using: SymmetricKey(data: Data(signatureSecret.utf8)))
+        let signature = Data(signatureBytes).map { String(format: "%02x", $0) }.joined()
+        return [
+            "X-Sync-Timestamp": "\(timestamp)",
+            "X-Sync-Signature": signature
+        ]
     }
 }
 

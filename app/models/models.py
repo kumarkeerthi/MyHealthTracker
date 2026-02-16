@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -49,6 +49,7 @@ class User(Base):
     auth_refresh_tokens: Mapped[list["AuthRefreshToken"]] = relationship(back_populates="user")
     auth_login_attempts: Mapped[list["AuthLoginAttempt"]] = relationship(back_populates="user")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user")
+    health_sync_summaries: Mapped[list["HealthSyncSummary"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -289,6 +290,26 @@ class MealEntry(Base):
 
     daily_log: Mapped["DailyLog"] = relationship(back_populates="meal_entries")
     food_item: Mapped["FoodItem"] = relationship(back_populates="meal_entries")
+
+
+class HealthSyncSummary(Base):
+    __tablename__ = "health_sync_summaries"
+    __table_args__ = (UniqueConstraint("user_id", "summary_date", name="uq_health_sync_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    summary_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    steps: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    resting_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sleep_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hrv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    workouts: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    source_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="health_sync_summaries")
+
+
 
 
 class VitalsEntry(Base):

@@ -31,6 +31,16 @@ struct DashboardView: View {
             }
             .background(Color.black.ignoresSafeArea())
             .navigationTitle("Home")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await healthKitManager.manualRefreshSync() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh health sync")
+                }
+            }
             .task {
                 viewModel.bind(healthKitManager: healthKitManager)
                 if let token = authManager.token {

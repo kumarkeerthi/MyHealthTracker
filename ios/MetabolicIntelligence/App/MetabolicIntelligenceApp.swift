@@ -19,6 +19,7 @@ struct MetabolicIntelligenceApp: App {
                 .task {
                     AppDelegate.authManager = authManager
                     AppDelegate.pushManager = pushManager
+                    AppDelegate.healthKitManager = healthKitManager
                     await authManager.restoreSession()
                     await pushManager.configureIfNeeded(authManager: authManager)
                     await healthKitManager.bootstrap(authManager: authManager, syncManager: syncManager)

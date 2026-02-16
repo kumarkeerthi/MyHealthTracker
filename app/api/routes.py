@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, time, date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -10,6 +11,7 @@ from app.core.security import (
     RateLimitRule,
     SlidingWindowLimiter,
     get_current_token_claims,
+    verify_request_signature,
     has_prompt_injection_risk,
     llm_usage_limiter,
     require_admin,
@@ -22,6 +24,7 @@ from app.models import (
     ExerciseCategory,
     ExerciseEntry,
     FoodItem,
+    HealthSyncSummary,
     InsulinScore,
     MealEntry,
     User,
@@ -31,6 +34,7 @@ from app.models import (
 )
 from app.schemas.schemas import (
     AppleHealthImportRequest,
+    HealthSummarySyncPayload,
     ChallengeResponse,
     CoachingWaistResponse,
     CompleteChallengeRequest,
@@ -108,6 +112,8 @@ from app.services.strength_engine import (
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+health_sync_rate_limiter = SlidingWindowLimiter()
 
 
 def _to_recipe_response(recipe: Recipe) -> RecipeResponse:
@@ -700,6 +706,148 @@ def vitals_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
         latest_sleep_hours=latest.sleep_hours,
         risk_flag=risk["flag"],
     )
+
+
+def _validate_health_sync_payload(payload: HealthSummarySyncPayload):
+    if payload.steps > 50000:
+        raise HTTPException(status_code=400, detail="Steps exceed plausible daily maximum")
+    if payload.resting_hr is not None and not (25 <= payload.resting_hr <= 220):
+        raise HTTPException(status_code=400, detail="Resting heart rate is out of valid range")
+    if payload.sleep_hours is not None and payload.sleep_hours > 24:
+        raise HTTPException(status_code=400, detail="Sleep hours cannot exceed 24")
+    for workout in payload.workouts:
+        if workout.duration <= 0 or workout.duration > 1440:
+            raise HTTPException(status_code=400, detail="Workout duration is invalid")
+        if workout.calories is not None and workout.calories > 10000:
+            raise HTTPException(status_code=400, detail="Workout calories are invalid")
+
+
+
+def _merge_workouts(existing: list[dict], incoming: list[dict]) -> list[dict]:
+    merged = {
+        f"{item.get('type')}|{item.get('start_time')}": item
+        for item in existing + incoming
+    }
+    return list(merged.values())
+
+
+def _merge_health_sync(existing: HealthSyncSummary, payload: HealthSummarySyncPayload) -> tuple[dict, bool]:
+    incoming_workouts = [item.model_dump(mode="json") for item in payload.workouts]
+    existing_generated_at = existing.source_generated_at
+    use_incoming_as_primary = payload.generated_at >= existing_generated_at
+
+    if use_incoming_as_primary:
+        merged_data = {
+            "steps": payload.steps,
+            "resting_hr": payload.resting_hr,
+            "sleep_hours": payload.sleep_hours,
+            "hrv": payload.hrv,
+            "workouts": _merge_workouts(existing.workouts or [], incoming_workouts),
+            "source_generated_at": payload.generated_at,
+        }
+    else:
+        merged_data = {
+            "steps": max(existing.steps, payload.steps),
+            "resting_hr": existing.resting_hr if existing.resting_hr is not None else payload.resting_hr,
+            "sleep_hours": existing.sleep_hours if existing.sleep_hours is not None else payload.sleep_hours,
+            "hrv": existing.hrv if existing.hrv is not None else payload.hrv,
+            "workouts": _merge_workouts(existing.workouts or [], incoming_workouts),
+            "source_generated_at": existing.source_generated_at,
+        }
+
+    changed = (
+        existing.steps != merged_data["steps"]
+        or existing.resting_hr != merged_data["resting_hr"]
+        or existing.sleep_hours != merged_data["sleep_hours"]
+        or existing.hrv != merged_data["hrv"]
+        or existing.workouts != merged_data["workouts"]
+        or existing.source_generated_at != merged_data["source_generated_at"]
+    )
+    return merged_data, changed
+
+
+@router.post("/health/sync-summary")
+async def sync_health_summary(
+    payload: HealthSummarySyncPayload,
+    request: Request,
+    claims: dict = Depends(get_current_token_claims),
+    db: Session = Depends(get_db),
+):
+    _validate_health_sync_payload(payload)
+
+    user_id = int(claims.get("sub", 0))
+    if user_id <= 0:
+        raise HTTPException(status_code=401, detail="Invalid JWT subject")
+
+    if not db.get(User, user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not health_sync_rate_limiter.is_allowed(
+        f"health-sync:{user_id}",
+        RateLimitRule(limit=settings.health_sync_rate_limit_per_hour, window_seconds=3600),
+    ):
+        raise HTTPException(status_code=429, detail="Health sync rate limit exceeded")
+
+    timestamp_header = request.headers.get("x-sync-timestamp", "")
+    signature = request.headers.get("x-sync-signature", "")
+    if not timestamp_header or not signature:
+        raise HTTPException(status_code=401, detail="Missing sync signature headers")
+
+    try:
+        timestamp = int(timestamp_header)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid sync timestamp header") from exc
+
+    body = await request.body()
+    if not verify_request_signature(
+        body=body,
+        signature=signature,
+        timestamp=timestamp,
+        ttl_seconds=settings.health_sync_signature_ttl_seconds,
+        secret=settings.health_sync_signing_secret,
+    ):
+        raise HTTPException(status_code=401, detail="Invalid signature or replay detected")
+
+    payload_size_bytes = len(body)
+    existing = db.scalar(
+        select(HealthSyncSummary).where(
+            HealthSyncSummary.user_id == user_id,
+            HealthSyncSummary.summary_date == payload.date,
+        )
+    )
+
+    if existing:
+        merged_data, changed = _merge_health_sync(existing, payload)
+        if changed:
+            existing.steps = merged_data["steps"]
+            existing.resting_hr = merged_data["resting_hr"]
+            existing.sleep_hours = merged_data["sleep_hours"]
+            existing.hrv = merged_data["hrv"]
+            existing.workouts = merged_data["workouts"]
+            existing.source_generated_at = merged_data["source_generated_at"]
+            existing.synced_at = datetime.utcnow()
+        result_status = "merged" if changed else "unchanged"
+    else:
+        existing = HealthSyncSummary(
+            user_id=user_id,
+            summary_date=payload.date,
+            steps=payload.steps,
+            resting_hr=payload.resting_hr,
+            sleep_hours=payload.sleep_hours,
+            hrv=payload.hrv,
+            workouts=[item.model_dump(mode="json") for item in payload.workouts],
+            source_generated_at=payload.generated_at,
+            synced_at=datetime.utcnow(),
+        )
+        db.add(existing)
+        result_status = "created"
+
+    db.commit()
+    logger.info(
+        "health_sync_completed",
+        extra={"user_id": user_id, "summary_date": str(payload.date), "payload_size": payload_size_bytes, "result": result_status},
+    )
+    return {"status": "ok", "result": result_status, "payload_size": payload_size_bytes}
 
 
 @router.post("/apple-sync")

@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     login_rate_limit_window_seconds: int = 60
     admin_user_ids: str = "1"
     password_reset_token_ttl_minutes: int = 30
+    health_sync_rate_limit_per_hour: int = 10
+    health_sync_signature_ttl_seconds: int = 300
+    health_sync_signing_secret: str = "CHANGE_ME_HEALTH_SYNC"
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@metabolicos.app"
