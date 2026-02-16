@@ -141,6 +141,10 @@ class MealEntry(Base):
     food_item_id: Mapped[int] = mapped_column(ForeignKey("food_items.id"), nullable=False)
     consumed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     servings: Mapped[float] = mapped_column(Float, default=1.0)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    vision_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    manual_adjustment_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    portion_scale_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     daily_log: Mapped["DailyLog"] = relationship(back_populates="meal_entries")
     food_item: Mapped["FoodItem"] = relationship(back_populates="meal_entries")

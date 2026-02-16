@@ -132,3 +132,74 @@ export async function updateNotificationSettings(payload: Partial<Omit<Notificat
 
   return (await response.json()) as NotificationSettings;
 }
+
+
+export type ImageAnalyzedFood = {
+  name: string;
+  estimated_quantity_grams: number;
+  confidence: number;
+  estimated_protein: number;
+  estimated_carbs: number;
+  estimated_fat: number;
+  estimated_hidden_oil: number;
+};
+
+export type AnalyzeFoodImageResponse = {
+  foods: ImageAnalyzedFood[];
+  plate_estimated_total_calories: number;
+  overall_confidence: number;
+  portion_scale_factor: number;
+  portion_estimation_confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  image_url: string;
+  estimated_macros: { protein: number; carbs: number; fats: number };
+  estimated_oil_tsp: number;
+  insulin_load_impact: number;
+  projected_daily_insulin_score: number;
+  approval: 'Approved' | 'Moderate' | 'High Insulin Load';
+  validation: { message: string; low_confidence_flag: boolean };
+  coaching: { primary_message: string; tags: string[] };
+  llm_prompt_template: string;
+  example_analysis_json: Record<string, unknown>;
+};
+
+export async function analyzeFoodImage(file: File, mealContext?: string) {
+  const formData = new FormData();
+  formData.append('image', file);
+  if (mealContext) {
+    formData.append('meal_context', mealContext);
+  }
+
+  const response = await fetch(`${baseUrl}/analyze-food-image`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to analyze image');
+  }
+
+  return (await response.json()) as AnalyzeFoodImageResponse;
+}
+
+export async function confirmFoodImageLog(payload: {
+  foods: ImageAnalyzedFood[];
+  image_url: string;
+  vision_confidence: number;
+  portion_scale_factor: number;
+  manual_adjustment_flag: boolean;
+  meal_context?: string;
+}) {
+  const response = await fetch(`${baseUrl}/analyze-food-image/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to confirm food log');
+  }
+
+  return await response.json();
+}
