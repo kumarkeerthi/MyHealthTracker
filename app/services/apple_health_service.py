@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
-from app.models import DailyLog, ExerciseEntry, User, VitalsEntry
+from app.models import DailyLog, ExerciseEntry, InsulinScore, User, VitalsEntry
 from app.services.exercise_engine import infer_workout_category
+from app.services.rule_engine import evaluate_daily_status, get_or_create_metabolic_profile
 
 
 class AppleHealthService:
@@ -31,6 +33,8 @@ class AppleHealthService:
 
         workout_count = 0
         post_meal_detected = 0
+        touched_log_ids: set[int] = set()
+
         for workout in parsed.get("workouts", []):
             performed_at = self._as_datetime(workout.get("performed_at"), parsed["recorded_at"])
             log_date = performed_at.date()
@@ -44,7 +48,10 @@ class AppleHealthService:
             movement_type = workout.get("movement_type", activity_type)
             category = infer_workout_category(activity_type, movement_type)
 
-            post_meal_walk = bool(workout.get("post_meal_walk", False) or (category.value == "WALK" and workout.get("within_60_min_meal", False)))
+            post_meal_walk = bool(
+                workout.get("post_meal_walk", False)
+                or (category.value == "WALK" and workout.get("within_60_min_meal", False))
+            )
             if post_meal_walk:
                 post_meal_detected += 1
 
@@ -73,9 +80,12 @@ class AppleHealthService:
                 performed_at=performed_at,
             )
             self.db.add(entry)
+            touched_log_ids.add(daily_log.id)
             workout_count += 1
 
+        insulin_updates = self._recalculate_daily_scores(user, touched_log_ids)
         self.db.commit()
+
         return {
             "vitals_entry_id": vitals_entry.id,
             "workouts_imported": workout_count,
@@ -83,20 +93,47 @@ class AppleHealthService:
             "heart_rate_zones_synced": bool(parsed.get("heart_rate_zones")),
             "hrv_synced": parsed.get("hrv") is not None,
             "vo2_max_synced": parsed.get("vo2_max") is not None,
+            "insulin_scores_updated": insulin_updates,
         }
+
+    def _recalculate_daily_scores(self, user: User, touched_log_ids: set[int]) -> int:
+        if not touched_log_ids:
+            return 0
+
+        profile = get_or_create_metabolic_profile(self.db, user)
+        logs = self.db.scalars(
+            select(DailyLog)
+            .options(selectinload(DailyLog.meal_entries))
+            .where(DailyLog.id.in_(touched_log_ids))
+        ).all()
+
+        updates = 0
+        for daily_log in logs:
+            if not daily_log.meal_entries:
+                continue
+            status = evaluate_daily_status(self.db, daily_log, profile)
+            self.db.add(
+                InsulinScore(
+                    daily_log_id=daily_log.id,
+                    score=status["insulin_load_score"],
+                    raw_score=status["insulin_load_raw_score"],
+                )
+            )
+            updates += 1
+        return updates
 
     def _normalize_payload(self, payload: dict) -> dict:
         source_payload = payload.get("health_export") or payload.get("relay") or payload
 
         steps = source_payload.get("steps", 0)
         resting_hr = source_payload.get("resting_heart_rate") or source_payload.get("resting_hr")
-        sleep_hours = source_payload.get("sleep_hours")
+        sleep_hours = source_payload.get("sleep_hours") or source_payload.get("sleep", {}).get("hours")
         workouts = source_payload.get("workouts", [])
         hrv = source_payload.get("hrv")
         vo2_max = source_payload.get("vo2_max")
         heart_rate_zones = source_payload.get("heart_rate_zones", {})
         recorded_at_raw = source_payload.get("recorded_at")
-        recorded_at = self._as_datetime(recorded_at_raw, datetime.utcnow())
+        recorded_at = self._as_datetime(recorded_at_raw, datetime.now(timezone.utc).replace(tzinfo=None))
 
         return {
             "steps": int(steps or 0),
@@ -113,4 +150,8 @@ class AppleHealthService:
     def _as_datetime(value: str | None, fallback: datetime) -> datetime:
         if not value:
             return fallback
-        return datetime.fromisoformat(value)
+        normalized = value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
