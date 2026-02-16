@@ -70,6 +70,20 @@ export LLM_CACHE_TTL_SECONDS=900
 
 Implementation details and OpenClaw integration notes are documented in `docs/openclaw_notification_layer.md`.
 
+
+## Production deployment (Phase 11)
+Use the interactive deployment engine:
+```bash
+chmod +x deploy.sh update.sh uninstall.sh
+./deploy.sh
+```
+
+Artifacts:
+- `deploy.sh` (interactive install + provisioning + rollback)
+- `update.sh` (rebuild/restart + health checks)
+- `uninstall.sh` (teardown)
+- `docs/production_deployment.md` (architecture diagram + operations)
+
 ## Dev run
 ```bash
 python -m venv .venv
