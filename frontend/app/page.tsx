@@ -60,6 +60,9 @@ export default async function Home() {
       hydrationTargetAchieved={daily?.hydration_target_achieved ?? false}
       streakDays={challenge?.current_streak ?? 0}
       strengthStreakDays={Math.max(0, Math.round((exercise?.grip_strength_improvement_pct ?? 0) / 5))}
+      fastingWindowIntact={daily?.validations?.carb_limit ?? true}
+      waistChangeCm={Math.max(0, (challenge?.current_streak ?? 0) * 0.2)}
+      noCarbDinnerStreak={Math.floor((challenge?.current_streak ?? 0) / 2)}
     />
   );
 }
