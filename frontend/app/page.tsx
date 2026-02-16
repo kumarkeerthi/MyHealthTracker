@@ -5,11 +5,7 @@ export default async function Home() {
   const { daily, profile, vitals } = await getDashboardData();
 
   const insulin = Math.round(daily?.insulin_load_score ?? 38);
-  const complianceSignals = [
-    daily?.validations?.protein_minimum,
-    daily?.validations?.carb_limit,
-    daily?.validations?.oil_limit,
-  ].filter(Boolean).length;
+  const complianceSignals = [daily?.validations?.protein_minimum, daily?.validations?.carb_limit, daily?.validations?.oil_limit].filter(Boolean).length;
 
   const compliance = Math.round((complianceSignals / 3) * 100) || 66;
 
@@ -24,6 +20,8 @@ export default async function Home() {
       chapatiLimit={profile?.max_chapati_per_day ?? 2}
       restingHr={vitals?.latest_resting_hr ?? 72}
       sleepHours={vitals?.latest_sleep_hours ?? 6.8}
+      proteinHit={daily?.validations?.protein_minimum ?? true}
+      carbUnderCeiling={daily?.validations?.carb_limit ?? true}
     />
   );
 }
