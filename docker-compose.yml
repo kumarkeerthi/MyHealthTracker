@@ -2,6 +2,7 @@ version: '3.9'
 services:
   api:
     build: .
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
@@ -10,10 +11,25 @@ services:
       - db
     volumes:
       - .:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   db:
     image: postgres:16
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: metabolic
       POSTGRES_USER: metabolic

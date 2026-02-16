@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
+from app.core.config import settings
+from app.core.security import create_access_token, llm_usage_limiter, require_admin, sanitize_text
 from app.models import (
     ChallengeAssignment,
     ChallengeFrequency,
@@ -76,6 +78,11 @@ from app.services.vitals_engine import calculate_vitals_risk_score
 router = APIRouter()
 
 
+def _is_admin_user(user_id: int) -> bool:
+    admin_ids = {int(x.strip()) for x in settings.admin_user_ids.split(",") if x.strip().isdigit()}
+    return user_id in admin_ids
+
+
 def _to_recipe_response(recipe: Recipe) -> RecipeResponse:
     links = [link for link in [recipe.external_link_primary, recipe.external_link_secondary] if link]
     return RecipeResponse(
@@ -99,6 +106,12 @@ def _get_or_create_daily_log(db: Session, user_id: int, log_date):
     db.add(daily_log)
     db.flush()
     return daily_log
+
+
+@router.post("/auth/token")
+def issue_token(user_id: int = Query(...)):
+    token = create_access_token(user_id=user_id, is_admin=_is_admin_user(user_id))
+    return {"access_token": token, "token_type": "bearer", "expires_in_minutes": settings.jwt_expiration_minutes}
 
 
 @router.post("/log-food", response_model=LogFoodResponse)
@@ -368,7 +381,11 @@ def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
 
 
 @router.get("/metabolic-advisor-report", response_model=MetabolicAdvisorReportResponse)
-def metabolic_advisor_report(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+def metabolic_advisor_report(
+    user_id: int = Query(default=1),
+    db: Session = Depends(get_db),
+    _claims: dict = Depends(require_admin),
+):
     report = metabolic_advisor_service.get_latest_report(db, user_id)
     if not report:
         report = metabolic_advisor_service.run_weekly_recommendations(db, user_id)
@@ -576,7 +593,8 @@ def whatsapp_message(payload: WhatsAppMessageRequest, db: Session = Depends(get_
 
     profile = get_or_create_metabolic_profile(db, user)
     consumed_at = payload.received_at or datetime.utcnow()
-    analysis = llm_service.analyze(db, user, profile, payload.text, consumed_at)
+    safe_text = sanitize_text(payload.text)
+    analysis = llm_service.analyze(db, user, profile, safe_text, consumed_at)
 
     title = "Metabolic coaching response"
     body = (
@@ -687,8 +705,11 @@ def analyze_food_image(
     image_bytes = image.file.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Image file is empty")
+    if len(image_bytes) > settings.max_food_image_bytes:
+        raise HTTPException(status_code=413, detail=f"Image exceeds limit of {settings.max_food_image_bytes} bytes")
 
-    return food_image_service.analyze_food_image(db, user, profile, image_bytes, meal_context, consumed_at)
+    safe_context = sanitize_text(meal_context) if meal_context else None
+    return food_image_service.analyze_food_image(db, user, profile, image_bytes, safe_context, consumed_at)
 
 
 @router.post("/analyze-food-image/confirm", response_model=ConfirmFoodImageLogResponse)
@@ -711,15 +732,21 @@ def confirm_food_image_log(payload: ConfirmFoodImageLogRequest, db: Session = De
         manual_adjustment_flag=payload.manual_adjustment_flag,
         consumed_at=consumed_at,
     )
+
+
 @router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
 def llm_analyze(payload: LLMAnalyzeRequest, db: Session = Depends(get_db)):
+    if not llm_usage_limiter.check_and_increment(payload.user_id, settings.llm_requests_per_hour):
+        raise HTTPException(status_code=429, detail="Hourly LLM usage limit reached")
+
     user = db.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     profile = get_or_create_metabolic_profile(db, user)
     consumed_at = payload.consumed_at or datetime.utcnow()
-    analysis = llm_service.analyze(db, user, profile, payload.text, consumed_at)
+    safe_text = sanitize_text(payload.text)
+    analysis = llm_service.analyze(db, user, profile, safe_text, consumed_at)
     return LLMAnalyzeResponse(**analysis)
 
 
@@ -743,3 +770,8 @@ def recipe_suggestions(user_id: int = Query(default=1), db: Session = Depends(ge
         suggestion=suggestion,
         recipes=[_to_recipe_response(recipe) for recipe in recipes],
     )
+
+
+@router.get("/admin/system-status")
+def admin_system_status(_claims: dict = Depends(require_admin)):
+    return {"status": "ok", "message": "Admin access verified"}
