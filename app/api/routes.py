@@ -13,6 +13,8 @@ from app.schemas.schemas import (
     LogExerciseRequest,
     LogFoodRequest,
     LogFoodResponse,
+    LLMAnalyzeRequest,
+    LLMAnalyzeResponse,
     LogVitalsRequest,
     ProfileResponse,
     UpdateProfileRequest,
@@ -30,6 +32,7 @@ from app.services.rule_engine import (
     validate_oil_limit,
     validate_protein_minimum,
 )
+from app.services.llm_service import llm_service
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
@@ -359,3 +362,15 @@ def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends
 @router.post("/external-event")
 def external_event(payload: dict):
     return {"status": "accepted", "message": "External event placeholder", "payload": payload}
+
+
+@router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
+def llm_analyze(payload: LLMAnalyzeRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = get_or_create_metabolic_profile(db, user)
+    consumed_at = payload.consumed_at or datetime.utcnow()
+    analysis = llm_service.analyze(db, user, profile, payload.text, consumed_at)
+    return LLMAnalyzeResponse(**analysis)
