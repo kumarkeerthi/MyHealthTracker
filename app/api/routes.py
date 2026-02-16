@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
@@ -10,11 +10,11 @@ from app.schemas.schemas import (
     AppleHealthImportRequest,
     DailySummaryResponse,
     ExerciseSummaryResponse,
+    LLMAnalyzeRequest,
+    LLMAnalyzeResponse,
     LogExerciseRequest,
     LogFoodRequest,
     LogFoodResponse,
-    LLMAnalyzeRequest,
-    LLMAnalyzeResponse,
     LogVitalsRequest,
     ProfileResponse,
     UpdateProfileRequest,
@@ -23,6 +23,7 @@ from app.schemas.schemas import (
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.exercise_engine import is_supported_movement
+from app.services.llm_service import llm_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -32,7 +33,13 @@ from app.services.rule_engine import (
     validate_oil_limit,
     validate_protein_minimum,
 )
-from app.services.llm_service import llm_service
+from app.services.strength_engine import (
+    compute_grip_improvement_percent,
+    compute_monkey_bar_progress,
+    compute_strength_score,
+    compute_weekly_strength_graph,
+    metabolic_strength_signals,
+)
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
@@ -102,7 +109,7 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     daily_log.total_hidden_oil = totals["hidden_oil"]
     db.flush()
 
-    daily_log = db.scalar(select(DailyLog).options(joinedload(DailyLog.user)).where(DailyLog.id == daily_log.id))
+    daily_log = db.scalar(select(DailyLog).options(joinedload(DailyLog.user), joinedload(DailyLog.meal_entries)).where(DailyLog.id == daily_log.id))
     status = evaluate_daily_status(db, daily_log, profile)
 
     db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
@@ -180,6 +187,12 @@ def log_vitals(payload: LogVitalsRequest, db: Session = Depends(get_db)):
         sleep_hours=payload.sleep_hours,
         waist_cm=payload.waist_cm,
         hrv=payload.hrv,
+        vo2_max=payload.vo2_max,
+        hr_zone_1_minutes=payload.hr_zone_1_minutes,
+        hr_zone_2_minutes=payload.hr_zone_2_minutes,
+        hr_zone_3_minutes=payload.hr_zone_3_minutes,
+        hr_zone_4_minutes=payload.hr_zone_4_minutes,
+        hr_zone_5_minutes=payload.hr_zone_5_minutes,
         steps_total=payload.steps_total,
         body_fat_percentage=payload.body_fat_percentage,
     )
@@ -210,8 +223,16 @@ def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
         activity_type=payload.activity_type,
         exercise_category=payload.exercise_category,
         movement_type=payload.movement_type,
+        muscle_group=payload.muscle_group,
         reps=payload.reps,
         sets=payload.sets,
+        grip_intensity_score=payload.grip_intensity_score,
+        pull_strength_score=payload.pull_strength_score,
+        progression_level=payload.progression_level,
+        dead_hang_duration_seconds=payload.dead_hang_duration_seconds,
+        pull_up_count=payload.pull_up_count,
+        assisted_pull_up_reps=payload.assisted_pull_up_reps,
+        grip_endurance_seconds=payload.grip_endurance_seconds,
         duration_minutes=payload.duration_minutes,
         perceived_intensity=payload.perceived_intensity,
         step_count=payload.step_count,
@@ -316,15 +337,29 @@ def put_profile(payload: UpdateProfileRequest, user_id: int = Query(default=1), 
 
 @router.get("/exercise-summary", response_model=ExerciseSummaryResponse)
 def exercise_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
-    total_sessions = db.scalar(select(func.count(ExerciseEntry.id)).where(ExerciseEntry.user_id == user_id)) or 0
-    total_duration = db.scalar(select(func.coalesce(func.sum(ExerciseEntry.duration_minutes), 0)).where(ExerciseEntry.user_id == user_id)) or 0
-    total_steps = db.scalar(select(func.coalesce(func.sum(ExerciseEntry.step_count), 0)).where(ExerciseEntry.user_id == user_id)) or 0
+    entries = db.scalars(select(ExerciseEntry).where(ExerciseEntry.user_id == user_id)).all()
+    total_sessions = len(entries)
+    total_duration = sum(entry.duration_minutes for entry in entries)
+    total_steps = sum(entry.step_count or 0 for entry in entries)
+
+    strength_score = compute_strength_score(entries)
+    monkey_bar_progress = compute_monkey_bar_progress(entries)
+    weekly_strength_graph = compute_weekly_strength_graph(entries)
+    grip_strength_improvement_pct = compute_grip_improvement_percent(entries)
+    metabolic_signals = metabolic_strength_signals(entries)
 
     return ExerciseSummaryResponse(
         user_id=user_id,
         total_sessions=total_sessions,
         total_duration_minutes=total_duration,
         total_steps=total_steps,
+        strength_index=float(strength_score["strength_index"]),
+        grip_strength_improvement_pct=grip_strength_improvement_pct,
+        hdl_improvement_mode=bool(metabolic_signals["hdl_improvement_mode"]),
+        muscle_stimulus_reduced=bool(metabolic_signals["muscle_stimulus_reduced"]),
+        metabolic_message=str(metabolic_signals["metabolic_message"]),
+        monkey_bar_progress=monkey_bar_progress,
+        weekly_strength_graph=weekly_strength_graph,
     )
 
 

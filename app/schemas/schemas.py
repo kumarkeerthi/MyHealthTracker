@@ -27,8 +27,6 @@ class LogFoodResponse(BaseModel):
     validations: dict[str, bool]
 
 
-
-
 class LLMAnalyzeRequest(BaseModel):
     user_id: int = 1
     text: str = Field(min_length=1)
@@ -45,6 +43,7 @@ class LLMAnalyzeResponse(BaseModel):
     estimated_macros: dict[str, float]
     source: str
 
+
 class LogVitalsRequest(BaseModel):
     user_id: int = 1
     recorded_at: datetime | None = None
@@ -57,6 +56,12 @@ class LogVitalsRequest(BaseModel):
     sleep_hours: float | None = None
     waist_cm: float | None = None
     hrv: float | None = None
+    vo2_max: float | None = None
+    hr_zone_1_minutes: int = 0
+    hr_zone_2_minutes: int = 0
+    hr_zone_3_minutes: int = 0
+    hr_zone_4_minutes: int = 0
+    hr_zone_5_minutes: int = 0
     steps_total: int = 0
     body_fat_percentage: float | None = None
 
@@ -66,8 +71,16 @@ class LogExerciseRequest(BaseModel):
     activity_type: str
     exercise_category: ExerciseCategory = ExerciseCategory.STRENGTH
     movement_type: str = "general"
+    muscle_group: str = "full_body"
     reps: int | None = None
     sets: int | None = None
+    grip_intensity_score: float = Field(default=0.0, ge=0)
+    pull_strength_score: float = Field(default=0.0, ge=0)
+    progression_level: int = Field(default=1, ge=1)
+    dead_hang_duration_seconds: int | None = Field(default=None, ge=0)
+    pull_up_count: int | None = Field(default=None, ge=0)
+    assisted_pull_up_reps: int | None = Field(default=None, ge=0)
+    grip_endurance_seconds: int | None = Field(default=None, ge=0)
     duration_minutes: int = Field(gt=0)
     perceived_intensity: int = Field(default=5, ge=1, le=10)
     step_count: int | None = None
@@ -139,11 +152,33 @@ class AppleHealthImportRequest(BaseModel):
     relay: dict | None = None
 
 
+class MonkeyBarProgressResponse(BaseModel):
+    dead_hang_duration_seconds: int
+    pull_up_count: int
+    assisted_pull_up_reps: int
+    grip_endurance_seconds: int
+
+
+class StrengthScoreResponse(BaseModel):
+    pushups: int
+    pullups: int
+    dead_hang_seconds: int
+    squats: int
+    strength_index: float
+
+
 class ExerciseSummaryResponse(BaseModel):
     user_id: int
     total_sessions: int
     total_duration_minutes: int
     total_steps: int
+    strength_index: float
+    grip_strength_improvement_pct: float
+    hdl_improvement_mode: bool
+    muscle_stimulus_reduced: bool
+    metabolic_message: str
+    monkey_bar_progress: MonkeyBarProgressResponse
+    weekly_strength_graph: list[float]
 
 
 class VitalsSummaryResponse(BaseModel):
