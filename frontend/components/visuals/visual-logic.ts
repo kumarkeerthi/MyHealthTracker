@@ -5,6 +5,9 @@ export type BodyVisualState = {
   visceralTone: 'high' | 'controlled';
   energyAura: boolean;
   comparisonScale: number;
+  postureLift: number;
+  abdomenGlowOpacity: number;
+  muscleDefinition: number;
 };
 
 export type StrengthVisualState = {
@@ -30,6 +33,9 @@ export function computeBodyVisualState(params: {
     visceralTone: params.insulinScore < 40 ? 'controlled' : 'high',
     energyAura: params.hydrationTargetAchieved && params.proteinHit,
     comparisonScale: params.carbUnderCeiling ? 0.92 : 1,
+    postureLift: 2,
+    abdomenGlowOpacity: params.insulinScore < 40 ? 0.18 : 0.34,
+    muscleDefinition: params.proteinHit ? 0.45 : 0.25,
   };
 }
 

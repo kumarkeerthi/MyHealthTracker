@@ -2,7 +2,7 @@ import type { BodyVisualState, StrengthVisualState } from '@/components/visuals/
 
 export function NeutralBodyOutline({ state, className = '' }: { state: BodyVisualState; className?: string }) {
   const aura = state.energyAura ? 'drop-shadow-[0_0_14px_rgba(16,185,129,0.6)]' : '';
-  const abdomenGlow = state.visceralTone === 'controlled' ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)';
+  const abdomenGlow = state.visceralTone === 'controlled' ? `rgba(16,185,129,${state.abdomenGlowOpacity})` : `rgba(239,68,68,${Math.max(0.18, state.abdomenGlowOpacity)})`;
 
   return (
     <svg viewBox="0 0 220 360" className={`w-full ${className} ${aura}`}>
@@ -13,10 +13,11 @@ export function NeutralBodyOutline({ state, className = '' }: { state: BodyVisua
         </linearGradient>
       </defs>
       <circle cx="110" cy="42" r="24" stroke="rgba(203,213,225,0.75)" strokeWidth="2" fill="url(#bodyShade)" />
-      <g transform={`translate(0 8) scale(${state.waistScale} 1)`}>
+      <g transform={`translate(0 ${8 - state.postureLift}) scale(${state.waistScale} 1)`}>
         <path d="M70 78 C58 124, 58 196, 78 256 C87 283, 90 312, 90 344 M150 78 C162 124, 162 196, 142 256 C133 283, 130 312, 130 344" stroke="rgba(203,213,225,0.8)" strokeWidth="3" fill="none" strokeLinecap="round" />
       </g>
       <ellipse cx="110" cy="176" rx="31" ry="38" fill={abdomenGlow} className="transition-all duration-300" />
+      <ellipse cx="110" cy="170" rx={24 + state.muscleDefinition * 6} ry={30 + state.muscleDefinition * 4} fill={`rgba(148,163,184,${0.08 + state.muscleDefinition * 0.15})`} className="transition-all duration-300" />
       <path d="M56 120 C34 168, 29 232, 48 270 M164 120 C186 168, 191 232, 172 270" stroke="rgba(148,163,184,0.55)" strokeWidth="2" fill="none" />
       <path d="M95 344 L81 356 M125 344 L139 356" stroke="rgba(148,163,184,0.65)" strokeWidth="2" />
     </svg>
