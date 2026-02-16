@@ -71,6 +71,8 @@ export type NotificationSettings = {
   strength_reminders_enabled: boolean;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
+  movement_reminder_delay_minutes: number;
+  movement_sensitivity: string;
 };
 
 export type Recipe = {
@@ -111,6 +113,7 @@ export type AdvancedAnalytics = {
   nut_frequency_trend: TrendSeries;
   sugar_load_trend: TrendSeries;
   hdl_support_trend: TrendSeries;
+  walk_vs_insulin_correlation: TrendSeries;
   waist_trend: TrendSeries;
   weight_trend: TrendSeries;
   protein_intake_consistency: TrendSeries;
@@ -163,6 +166,26 @@ export type HabitIntelligence = {
   heatmap: HabitHeatmapCell[];
   insights: string[];
   overall_success_rate: number;
+};
+
+export type MovementPanel = {
+  post_meal_walk_status: string;
+  steps_today: number;
+  walk_streak: number;
+  recovery_prompt: string;
+  badge?: string | null;
+  alerts_remaining: number;
+  post_meal_walk_bonus: boolean;
+};
+
+export type MovementSettings = {
+  user_id: number;
+  reminder_delay_minutes: number;
+  sensitivity: 'strict' | 'balanced' | 'relaxed' | string;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  movement_reminder_delay_minutes: number;
+  movement_sensitivity: string;
 };
 
 export type RecipeSuggestion = {
@@ -235,7 +258,7 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance, movementPanel] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
@@ -247,6 +270,7 @@ export async function getDashboardData() {
     readJson<AdvancedAnalytics>('/analytics/advanced?user_id=1&days=30'),
     readJson<HabitIntelligence>('/habits/intelligence?user_id=1&days=90'),
     readJson<MetabolicPhasePerformance>('/metabolic/performance-view?user_id=1'),
+    readJson<MovementPanel>('/movement/panel?user_id=1'),
   ]);
 
   return {
@@ -261,6 +285,7 @@ export async function getDashboardData() {
     analytics,
     habitIntelligence,
     metabolicPerformance,
+    movementPanel,
   };
 }
 
@@ -384,4 +409,8 @@ export async function logHydration(amountMl: number) {
   });
   if (!response.ok) throw new Error('Failed to log hydration');
   return await response.json();
+}
+
+export async function getMovementSettings() {
+  return await readJson<MovementSettings>('/movement/settings?user_id=1');
 }

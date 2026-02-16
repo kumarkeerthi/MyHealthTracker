@@ -98,6 +98,7 @@ class AnalyticsEngine:
         nut_points: list[tuple[date, float]] = []
         sugar_points: list[tuple[date, float]] = []
         hdl_support_points: list[tuple[date, float]] = []
+        walk_minutes_points: list[tuple[date, float]] = []
 
         cursor = start_date
         while cursor <= end_date:
@@ -123,6 +124,7 @@ class AnalyticsEngine:
                 clean_streak = 0
 
             strength_score = compute_strength_score(day_exercises) if day_exercises else 0.0
+            walk_minutes = float(sum(e.duration_minutes for e in day_exercises if e.exercise_category.value == "WALK")) if day_exercises else 0.0
             avg_grip = 0.0
             if day_exercises:
                 grip_values = [entry.grip_intensity_score for entry in day_exercises if entry.grip_intensity_score is not None]
@@ -139,6 +141,7 @@ class AnalyticsEngine:
             clean_streak_points.append((cursor, float(clean_streak)))
             strength_points.append((cursor, float(strength_score)))
             grip_points.append((cursor, float(avg_grip)))
+            walk_minutes_points.append((cursor, walk_minutes))
 
             fruit_servings = 0.0
             nut_servings = 0.0
@@ -191,6 +194,7 @@ class AnalyticsEngine:
             "nut_frequency_trend": self._build_series("Nut Frequency", nut_points, lower_is_better=False),
             "sugar_load_trend": self._build_series("Sugar Load Trend", sugar_points, lower_is_better=True),
             "hdl_support_trend": self._build_series("HDL-support Trend", hdl_support_points, lower_is_better=False),
+            "walk_vs_insulin_correlation": self._build_series("Walk vs Insulin Score", walk_minutes_points, lower_is_better=False),
             "waist_trend": self._build_series("Waist Trend", with_fallback(waist_points), lower_is_better=True),
             "weight_trend": self._build_series("Weight Trend", with_fallback(weight_points), lower_is_better=True),
             "protein_intake_consistency": self._build_series("Protein Intake Consistency", protein_points, lower_is_better=False),

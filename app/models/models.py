@@ -118,6 +118,8 @@ class NotificationSettings(Base):
     strength_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     quiet_hours_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
     quiet_hours_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    movement_reminder_delay_minutes: Mapped[int] = mapped_column(Integer, default=45)
+    movement_sensitivity: Mapped[str] = mapped_column(String(20), default="balanced")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
