@@ -6,6 +6,7 @@ from app.data.seed_data import seed_initial_data
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.services.coaching_scheduler import coaching_scheduler
+from app.services.metabolic_advisor_scheduler import metabolic_advisor_scheduler
 
 app = FastAPI(title=settings.app_name)
 app.include_router(router)
@@ -20,11 +21,13 @@ def startup_event():
     finally:
         db.close()
     coaching_scheduler.start()
+    metabolic_advisor_scheduler.start()
 
 
 @app.on_event("shutdown")
 def shutdown_event():
     coaching_scheduler.shutdown()
+    metabolic_advisor_scheduler.shutdown()
 
 
 @app.get("/health")

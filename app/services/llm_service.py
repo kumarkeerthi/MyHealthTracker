@@ -208,6 +208,75 @@ class LLMService:
         parsed["source"] = "llm"
         return parsed
 
+    def summarize_metabolic_advisor_report(
+        self,
+        *,
+        user_id: int,
+        week_start,
+        week_end,
+        waist_not_dropping: bool,
+        strength_increasing: bool,
+        strength_delta: float,
+        carb_before: int,
+        carb_after: int,
+        protein_before: int,
+        protein_after: int,
+        allow_refeed_meal: bool,
+        recommendations: list[str],
+    ) -> str | None:
+        if not self.api_key:
+            return None
+
+        prompt = {
+            "user_id": user_id,
+            "window": {"week_start": str(week_start), "week_end": str(week_end)},
+            "signals": {
+                "waist_not_dropping": waist_not_dropping,
+                "strength_increasing": strength_increasing,
+                "strength_delta": strength_delta,
+            },
+            "adjustments": {
+                "carb_ceiling": {"before": carb_before, "after": carb_after},
+                "protein_target_min": {"before": protein_before, "after": protein_after},
+                "allow_refeed_meal": allow_refeed_meal,
+            },
+            "recommendations": recommendations,
+        }
+
+        body = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Write a concise weekly Metabolic Advisor Report for a fitness coaching app. "
+                        "Keep it to 5-8 bullet points and include the title 'Metabolic Advisor Report'."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(prompt)},
+            ],
+            "temperature": 0.2,
+        }
+
+        http_request = request.Request(
+            url="https://api.openai.com/v1/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(http_request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (error.URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
+        content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content.strip() or None
+
     def _fallback_extract(self, db: Session, text: str) -> dict[str, Any]:
         lowered = text.lower()
         foods = db.scalars(select(FoodItem)).all()

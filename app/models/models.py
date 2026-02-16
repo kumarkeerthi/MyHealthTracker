@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -36,6 +36,7 @@ class User(Base):
     metabolic_profile: Mapped["MetabolicProfile"] = relationship(back_populates="user", uselist=False)
     challenge_assignments: Mapped[list["ChallengeAssignment"]] = relationship(back_populates="user")
     challenge_streaks: Mapped[list["ChallengeStreak"]] = relationship(back_populates="user")
+    metabolic_recommendation_logs: Mapped[list["MetabolicRecommendationLog"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -215,6 +216,28 @@ class InsulinScore(Base):
     calculated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     daily_log: Mapped["DailyLog"] = relationship(back_populates="insulin_scores")
+
+
+class MetabolicRecommendationLog(Base):
+    __tablename__ = "metabolic_recommendation_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    week_start: Mapped[date] = mapped_column(Date, nullable=False)
+    week_end: Mapped[date] = mapped_column(Date, nullable=False)
+    waist_not_dropping: Mapped[bool] = mapped_column(Boolean, default=False)
+    strength_increasing: Mapped[bool] = mapped_column(Boolean, default=False)
+    carb_ceiling_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    carb_ceiling_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein_target_min_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein_target_min_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    recommend_strength_volume_increase: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_refeed_meal: Mapped[bool] = mapped_column(Boolean, default=False)
+    recommendations: Mapped[str] = mapped_column(Text, nullable=False)
+    advisor_report: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="metabolic_recommendation_logs")
 
 
 class ChallengeAssignment(Base):
