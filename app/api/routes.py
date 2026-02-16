@@ -50,6 +50,7 @@ from app.schemas.schemas import (
     ConfirmFoodImageLogResponse,
     AdvancedAnalyticsResponse,
     HabitIntelligenceResponse,
+    MetabolicPhasePerformanceResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -61,6 +62,7 @@ from app.services.food_image_service import food_image_service
 from app.services.recipe_service import recipe_service
 from app.services.analytics_engine import analytics_engine
 from app.services.habit_intelligence_engine import habit_intelligence_engine
+from app.services.metabolic_phase_service import metabolic_phase_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -357,6 +359,15 @@ def advanced_analytics(
     if not analytics:
         raise HTTPException(status_code=404, detail="User not found")
     return AdvancedAnalyticsResponse(**analytics)
+
+
+@router.get("/metabolic/performance-view", response_model=MetabolicPhasePerformanceResponse)
+def metabolic_performance_view(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    payload = metabolic_phase_service.build_phase_dashboard(db, user_id=user_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.commit()
+    return MetabolicPhasePerformanceResponse(**payload)
 
 
 @router.get("/weekly-summary", response_model=WeeklySummaryResponse)

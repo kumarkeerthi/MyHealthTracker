@@ -3,6 +3,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models import ExerciseCategory
+from app.models import MetabolicPhase
 
 
 class MealEntryInput(BaseModel):
@@ -320,6 +321,69 @@ class AdvancedAnalyticsResponse(BaseModel):
     habit_compliance_trend: TrendSeriesResponse
     clean_streak_trend: TrendSeriesResponse
     metabolic_momentum: MetabolicMomentumResponse
+
+
+class PhaseRuleResponse(BaseModel):
+    carb_ceiling: str
+    rice_rule: str
+    fruit_rule: str
+    strength_rule: str
+    identity: str
+
+
+class PhaseCatalogResponse(BaseModel):
+    phase: MetabolicPhase
+    identity: str
+    carb_ceiling: str
+    strength_rule: str
+
+
+class PhaseModelResponse(BaseModel):
+    current_phase: MetabolicPhase
+    identity: str
+    rules: PhaseRuleResponse
+    all_phases: list[PhaseCatalogResponse]
+
+
+class PhaseTransitionLogicResponse(BaseModel):
+    should_transition: bool
+    current_phase: MetabolicPhase
+    target_phase: MetabolicPhase
+    reason: str
+    signals: dict[str, bool | float]
+
+
+class CarbToleranceModuleResponse(BaseModel):
+    carb_challenge_day_logged: bool
+    protocol: str
+    next_day_metrics: dict[str, float | None]
+    carb_tolerance_index: float
+    evaluation: str
+
+
+class PerformanceDashboardResponse(BaseModel):
+    strength_index: float
+    grip_score: float
+    carb_tolerance_index: float
+    recovery_score: float
+    sleep_consistency: float
+
+
+class PeriodizationResponse(BaseModel):
+    monthly_cycle: list[dict[str, str | int]]
+    monkey_bar_metrics: dict[str, int]
+
+
+class MetabolicPhasePerformanceResponse(BaseModel):
+    phase_model: PhaseModelResponse
+    transition_logic: PhaseTransitionLogicResponse
+    carb_tolerance: CarbToleranceModuleResponse
+    performance_dashboard: PerformanceDashboardResponse
+    periodization: PeriodizationResponse
+    example_transition_scenario: dict
+    backend_logic: dict[str, str]
+
+
 class VitalsSummaryResponse(BaseModel):
     user_id: int
     latest_steps_total: int

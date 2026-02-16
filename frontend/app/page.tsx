@@ -2,7 +2,7 @@ import { Dashboard } from '@/components/dashboard';
 import { getDashboardData } from '@/lib/api';
 
 export default async function Home() {
-  const { daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence } = await getDashboardData();
+  const { daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance } = await getDashboardData();
 
   const insulin = Math.round(daily?.insulin_load_score ?? 38);
   const complianceSignals = [daily?.validations?.protein_minimum, daily?.validations?.carb_limit, daily?.validations?.oil_limit].filter(Boolean).length;
@@ -45,6 +45,7 @@ export default async function Home() {
       recipes={recipes ?? recipeSuggestion?.recipes ?? []}
       analytics={analytics ?? null}
       habitIntelligence={habitIntelligence ?? null}
+      metabolicPerformance={metabolicPerformance ?? null}
     />
   );
 }
