@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
@@ -40,6 +40,10 @@ from app.schemas.schemas import (
     RecipeResponse,
     RecipeSuggestionResponse,
     UpdateNotificationSettingsRequest,
+    PushSubscribeRequest,
+    PushSendRequest,
+    HydrationLogRequest,
+    HydrationLogResponse,
     UpdateProfileRequest,
     VitalsSummaryResponse,
     WhatsAppMessageRequest,
@@ -57,6 +61,8 @@ from app.services.challenge_engine import ChallengeEngine
 from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
 from app.services.notification_service import notification_service
+from app.services.push_service import push_service
+from app.services.hydration_engine import apply_hydration_update, HYDRATION_TARGET_MIN_ML, HYDRATION_TARGET_MAX_ML
 from app.services.metabolic_advisor_service import metabolic_advisor_service
 from app.services.food_image_service import food_image_service
 from app.services.recipe_service import recipe_service
@@ -305,6 +311,11 @@ def daily_summary(
         nuts_budget=1.0,
         remaining_carb_budget=max(0.0, round(profile.carb_ceiling - daily_log.total_carbs, 2)),
         warnings=warnings,
+        water_ml=daily_log.water_ml,
+        hydration_score=daily_log.hydration_score,
+        hydration_target_min_ml=HYDRATION_TARGET_MIN_ML,
+        hydration_target_max_ml=HYDRATION_TARGET_MAX_ML,
+        hydration_target_achieved=daily_log.water_ml >= HYDRATION_TARGET_MIN_ML,
         validations=validations,
     )
 
@@ -787,6 +798,13 @@ def get_notification_settings(user_id: int = Query(default=1), db: Session = Dep
         push_enabled=settings.push_enabled,
         email_enabled=settings.email_enabled,
         silent_mode=settings.silent_mode,
+        protein_reminders_enabled=settings.protein_reminders_enabled,
+        fasting_alerts_enabled=settings.fasting_alerts_enabled,
+        hydration_alerts_enabled=settings.hydration_alerts_enabled,
+        insulin_alerts_enabled=settings.insulin_alerts_enabled,
+        strength_reminders_enabled=settings.strength_reminders_enabled,
+        quiet_hours_start=settings.quiet_hours_start,
+        quiet_hours_end=settings.quiet_hours_end,
     )
 
 
@@ -814,9 +832,66 @@ def update_notification_settings(
         push_enabled=settings.push_enabled,
         email_enabled=settings.email_enabled,
         silent_mode=settings.silent_mode,
+        protein_reminders_enabled=settings.protein_reminders_enabled,
+        fasting_alerts_enabled=settings.fasting_alerts_enabled,
+        hydration_alerts_enabled=settings.hydration_alerts_enabled,
+        insulin_alerts_enabled=settings.insulin_alerts_enabled,
+        strength_reminders_enabled=settings.strength_reminders_enabled,
+        quiet_hours_start=settings.quiet_hours_start,
+        quiet_hours_end=settings.quiet_hours_end,
     )
 
 
+@router.get("/push/public-key")
+def push_public_key():
+    return {"public_key": settings.vapid_public_key}
+
+
+@router.post("/push/subscribe")
+def push_subscribe(payload: PushSubscribeRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    record = push_service.upsert_subscription(db, payload.user_id, payload.model_dump())
+    db.commit()
+    return {"status": "ok", "subscription_id": record.id}
+
+
+@router.post("/push/send")
+def push_send(payload: PushSendRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = push_service.send_to_user(db, payload.user_id, title=payload.title, body=payload.body, payload=payload.payload)
+    return {"status": "accepted", "delivery": result}
+
+
+@router.post("/hydration/log", response_model=HydrationLogResponse)
+def hydration_log(payload: HydrationLogRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_date = payload.log_date or date.today()
+    daily_log = _get_or_create_daily_log(db, payload.user_id, target_date)
+    data = apply_hydration_update(daily_log, payload.amount_ml)
+
+    if datetime.utcnow().hour >= 16 and daily_log.water_ml < 1500:
+        settings_row = notification_service.get_or_create_settings(db, payload.user_id)
+        if settings_row.hydration_alerts_enabled:
+            notification_service.send_message(
+                db,
+                payload.user_id,
+                channel="push",
+                title="Hydration Check",
+                body="Hydration check – have you had water?",
+                metadata={"water_ml": daily_log.water_ml},
+            )
+
+    db.commit()
+    return HydrationLogResponse(date=target_date, **data)
 
 
 @router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)

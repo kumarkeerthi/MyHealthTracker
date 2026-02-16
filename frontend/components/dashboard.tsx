@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Bolt, Camera, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
-import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type HabitIntelligence, type ImageAnalyzedFood, type MetabolicPhasePerformance, type TrendSeries } from '@/lib/api';
+import { analyzeFoodImage, confirmFoodImageLog, logHydration, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type HabitIntelligence, type ImageAnalyzedFood, type MetabolicPhasePerformance, type TrendSeries } from '@/lib/api';
+import { PwaClient } from '@/components/pwa-client';
 
 type DashboardProps = {
   insulinScore: number;
@@ -67,6 +68,12 @@ type DashboardProps = {
   analytics: AdvancedAnalytics | null;
   habitIntelligence: HabitIntelligence | null;
   metabolicPerformance: MetabolicPhasePerformance | null;
+  waterMl: number;
+  hydrationScore: number;
+  hydrationTargetMinMl: number;
+  hydrationTargetAchieved: boolean;
+  streakDays: number;
+  strengthStreakDays: number;
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -367,6 +374,9 @@ function PerformanceViewSection({ performance }: { performance: MetabolicPhasePe
 
 export function Dashboard(props: DashboardProps) {
   const [tab, setTab] = useState<'metabolic' | 'exercise' | 'performance'>('metabolic');
+  const [hydrationMl, setHydrationMl] = useState(props.waterMl);
+  const [hydrationScore, setHydrationScore] = useState(props.hydrationScore);
+  const [hydrateMessage, setHydrateMessage] = useState(props.hydrationTargetAchieved ? 'Hydration target achieved.' : 'Controlled.');
   const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [scanMealContext, setScanMealContext] = useState('lunch');
@@ -429,6 +439,57 @@ export function Dashboard(props: DashboardProps) {
     }
   }
 
+
+  async function addWater(amount: number) {
+    const applyLocal = () => {
+      const next = hydrationMl + amount;
+      setHydrationMl(next);
+      setHydrationScore(Math.min(100, Number(((next / props.hydrationTargetMinMl) * 100).toFixed(1))));
+      setHydrateMessage(next >= props.hydrationTargetMinMl ? 'Hydration target achieved.' : 'Discipline Active.');
+    };
+
+    if (!navigator.onLine) {
+      const queued = JSON.parse(localStorage.getItem('hydration_queue') || '[]');
+      queued.push(amount);
+      localStorage.setItem('hydration_queue', JSON.stringify(queued));
+      applyLocal();
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        await (reg as ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } }).sync?.register('hydration-sync');
+      }
+      return;
+    }
+
+    const result = await logHydration(amount);
+    setHydrationMl(result.water_ml);
+    setHydrationScore(result.hydration_score);
+    setHydrateMessage(result.message);
+  }
+
+  useEffect(() => {
+    const syncQueued = async () => {
+      const queued: number[] = JSON.parse(localStorage.getItem('hydration_queue') || '[]');
+      if (!queued.length || !navigator.onLine) return;
+      for (const amount of queued) {
+        await logHydration(amount);
+      }
+      localStorage.removeItem('hydration_queue');
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'HYDRATION_SYNC_REQUEST') {
+        syncQueued();
+      }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    window.addEventListener('online', syncQueued);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', onMessage);
+      window.removeEventListener('online', syncQueued);
+    };
+  }, []);
+
   function editPortion(index: number, grams: number) {
     setManualEdited(true);
     setEditableFoods((prev) => prev.map((item, i) => {
@@ -462,6 +523,27 @@ export function Dashboard(props: DashboardProps) {
             <p className="text-4xl font-semibold">{props.insulinScore}</p>
             <p className="text-sm text-emerald-300">{insulinLoadText}</p>
             <p className="mt-2 text-sm text-slate-300">Compliance {props.compliance}%</p>
+          </section>
+          <PwaClient />
+
+          <section className="grid grid-cols-2 gap-3">
+            <div className="glass-card p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hydration Progress Ring</p>
+              <p className="mt-1 text-lg font-semibold">{hydrationMl} ml</p>
+              <p className="text-xs text-slate-300">Score {hydrationScore.toFixed(1)}%</p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => addWater(250)} className="rounded bg-white/10 px-2 py-1 text-xs">+250 ml</button>
+                <button onClick={() => addWater(500)} className="rounded bg-white/10 px-2 py-1 text-xs">+500 ml</button>
+              </div>
+              <p className="mt-2 text-xs text-emerald-300">{hydrateMessage}</p>
+            </div>
+            <div className="glass-card p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Momentum Layer</p>
+              <p className="mt-1 text-sm">Insulin progress ring: {props.insulinScore}</p>
+              <p className="text-sm">Streak indicator: {props.streakDays} days</p>
+              <p className="text-sm">Strength streak: {props.strengthStreakDays} days</p>
+              <p className="mt-2 text-xs text-slate-300">Controlled. Discipline Active. Recovery Mode.</p>
+            </div>
           </section>
 
           <MacroBar label="Protein" value={props.protein} max={130} color="#34d399" />

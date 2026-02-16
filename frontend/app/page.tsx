@@ -54,6 +54,12 @@ export default async function Home() {
       analytics={analytics ?? null}
       habitIntelligence={habitIntelligence ?? null}
       metabolicPerformance={metabolicPerformance ?? null}
+      waterMl={daily?.water_ml ?? 0}
+      hydrationScore={daily?.hydration_score ?? 0}
+      hydrationTargetMinMl={daily?.hydration_target_min_ml ?? 2500}
+      hydrationTargetAchieved={daily?.hydration_target_achieved ?? false}
+      streakDays={challenge?.current_streak ?? 0}
+      strengthStreakDays={Math.max(0, Math.round((exercise?.grip_strength_improvement_pct ?? 0) / 5))}
     />
   );
 }

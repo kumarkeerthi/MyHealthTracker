@@ -26,17 +26,27 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
     }
   }
 
+  async function saveQuietHours(key: 'quiet_hours_start' | 'quiet_hours_end', value: string) {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    const saved = await updateNotificationSettings({ [key]: value });
+    setSettings(saved);
+  }
+
   const options: Array<{ key: keyof Omit<NotificationSettings, 'user_id'>; label: string; helper: string }> = [
-    { key: 'whatsapp_enabled', label: 'WhatsApp', helper: 'Enable coaching and alerts over WhatsApp.' },
-    { key: 'push_enabled', label: 'Push', helper: 'Receive mobile push alerts for insulin/protein thresholds.' },
-    { key: 'email_enabled', label: 'Email', helper: 'Enable daily summary and coaching over email.' },
+    { key: 'protein_reminders_enabled', label: 'Protein reminders', helper: 'Protein first nudges.' },
+    { key: 'fasting_alerts_enabled', label: 'Fasting alerts', helper: 'Window-start fasting reminders.' },
+    { key: 'hydration_alerts_enabled', label: 'Hydration alerts', helper: 'Water adherence prompts.' },
+    { key: 'insulin_alerts_enabled', label: 'Insulin alerts', helper: 'High insulin load walk recommendation.' },
+    { key: 'strength_reminders_enabled', label: 'Strength reminders', helper: 'Grip stimulus reminders.' },
+    { key: 'push_enabled', label: 'Push channel', helper: 'Allow mobile push delivery.' },
     { key: 'silent_mode', label: 'Silent mode', helper: 'Mute all channels temporarily.' },
   ];
 
   return (
     <main className="mx-auto max-w-md space-y-4 px-4 py-8 text-white">
       <h1 className="text-xl font-semibold">Notification Settings</h1>
-      <p className="text-sm text-slate-400">Control WhatsApp, push, email, and silent mode.</p>
+      <p className="text-sm text-slate-400">Control coaching reminders and quiet hours.</p>
       {options.map((option) => (
         <section key={option.key} className="glass-card flex items-center justify-between gap-4 p-4">
           <div>
@@ -52,6 +62,31 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
           </button>
         </section>
       ))}
+
+      <section className="glass-card space-y-2 p-4">
+        <p className="font-medium">Quiet hours</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="space-y-1">
+            <span className="text-slate-400">Start</span>
+            <input
+              type="time"
+              value={settings.quiet_hours_start ?? ''}
+              onChange={(event) => saveQuietHours('quiet_hours_start', event.target.value)}
+              className="w-full rounded bg-white/10 px-2 py-1"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-slate-400">End</span>
+            <input
+              type="time"
+              value={settings.quiet_hours_end ?? ''}
+              onChange={(event) => saveQuietHours('quiet_hours_end', event.target.value)}
+              className="w-full rounded bg-white/10 px-2 py-1"
+            />
+          </label>
+        </div>
+      </section>
+
       {status ? <p className="text-xs text-slate-400">{status}</p> : null}
     </main>
   );

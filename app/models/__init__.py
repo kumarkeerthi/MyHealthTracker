@@ -18,6 +18,7 @@ from app.models.models import (
     MetabolicProfile,
     NotificationSettings,
     PendingRecommendation,
+    PushSubscription,
     RecommendationStatus,
     Recipe,
     User,
@@ -46,6 +47,7 @@ __all__ = [
     "MetabolicAgentState",
     "MetabolicPhase",
     "PendingRecommendation",
+    "PushSubscription",
     "AgentRunCadence",
     "RecommendationStatus",
 ]

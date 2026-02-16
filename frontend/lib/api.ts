@@ -11,6 +11,11 @@ export type DailySummary = {
   nuts_budget: number;
   remaining_carb_budget: number;
   warnings: string[];
+  water_ml: number;
+  hydration_score: number;
+  hydration_target_min_ml: number;
+  hydration_target_max_ml: number;
+  hydration_target_achieved: boolean;
   validations: {
     protein_minimum: boolean;
     carb_limit: boolean;
@@ -59,6 +64,13 @@ export type NotificationSettings = {
   push_enabled: boolean;
   email_enabled: boolean;
   silent_mode: boolean;
+  protein_reminders_enabled: boolean;
+  fasting_alerts_enabled: boolean;
+  hydration_alerts_enabled: boolean;
+  insulin_alerts_enabled: boolean;
+  strength_reminders_enabled: boolean;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
 };
 
 export type Recipe = {
@@ -340,5 +352,36 @@ export async function confirmFoodImageLog(payload: {
     throw new Error('Failed to confirm food log');
   }
 
+  return await response.json();
+}
+
+
+export async function getPushPublicKey() {
+  return await readJson<{ public_key: string }>('/push/public-key');
+}
+
+export async function subscribePush(payload: {
+  user_id: number;
+  endpoint: string;
+  expirationTime: number | null;
+  keys: { p256dh: string; auth: string };
+  user_agent?: string;
+}) {
+  const response = await fetch(`${baseUrl}/push/subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to subscribe for push');
+  return await response.json();
+}
+
+export async function logHydration(amountMl: number) {
+  const response = await fetch(`${baseUrl}/hydration/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 1, amount_ml: amountMl }),
+  });
+  if (!response.ok) throw new Error('Failed to log hydration');
   return await response.json();
 }
