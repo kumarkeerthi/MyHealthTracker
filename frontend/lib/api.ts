@@ -68,6 +68,45 @@ export type Recipe = {
   external_links: string[];
 };
 
+
+
+export type AnalyticsPoint = {
+  date: string;
+  value: number;
+};
+
+export type TrendSeries = {
+  key: string;
+  label: string;
+  trend: 'improvement' | 'steady' | 'regression';
+  improving: boolean;
+  points: AnalyticsPoint[];
+};
+
+export type AdvancedAnalytics = {
+  start_date: string;
+  end_date: string;
+  insulin_load_trend: TrendSeries;
+  waist_trend: TrendSeries;
+  weight_trend: TrendSeries;
+  protein_intake_consistency: TrendSeries;
+  carb_intake_pattern: TrendSeries;
+  oil_usage_pattern: TrendSeries;
+  strength_score_trend: TrendSeries;
+  grip_strength_trend: TrendSeries;
+  sleep_trend: TrendSeries;
+  resting_heart_rate_trend: TrendSeries;
+  habit_compliance_trend: TrendSeries;
+  clean_streak_trend: TrendSeries;
+  metabolic_momentum: {
+    score: number;
+    insulin_load_component: number;
+    waist_component: number;
+    strength_component: number;
+    sleep_component: number;
+  };
+};
+
 export type RecipeSuggestion = {
   user_id: number;
   carb_load_remaining: number;
@@ -90,7 +129,7 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
@@ -99,6 +138,7 @@ export async function getDashboardData() {
     readJson<Challenge>('/challenge/monthly?user_id=1'),
     readJson<Recipe[]>('/recipes'),
     readJson<RecipeSuggestion>('/recipes/suggestions?user_id=1'),
+    readJson<AdvancedAnalytics>('/analytics/advanced?user_id=1&days=30'),
   ]);
 
   return {
@@ -110,6 +150,7 @@ export async function getDashboardData() {
     monthlyChallenge,
     recipes,
     recipeSuggestion,
+    analytics,
   };
 }
 

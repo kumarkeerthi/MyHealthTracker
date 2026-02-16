@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Bolt, Camera, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
-import { analyzeFoodImage, confirmFoodImageLog, type AnalyzeFoodImageResponse, type ImageAnalyzedFood } from '@/lib/api';
+import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type ImageAnalyzedFood, type TrendSeries } from '@/lib/api';
 
 type DashboardProps = {
   insulinScore: number;
@@ -56,6 +56,7 @@ type DashboardProps = {
     insulin_score_impact: number;
     external_links: string[];
   }>;
+  analytics: AdvancedAnalytics | null;
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -117,6 +118,113 @@ function StrengthGraph({ values }: { values: number[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+
+
+function trendTone(trend: TrendSeries['trend']) {
+  if (trend === 'improvement') {
+    return { stroke: '#34d399', fillA: 'rgba(16,185,129,0.35)', fillB: 'rgba(16,185,129,0.02)', glow: 'shadow-[0_0_22px_rgba(16,185,129,0.55)]' };
+  }
+  if (trend === 'regression') {
+    return { stroke: '#ef4444', fillA: 'rgba(239,68,68,0.3)', fillB: 'rgba(239,68,68,0.02)', glow: '' };
+  }
+  return { stroke: '#f59e0b', fillA: 'rgba(245,158,11,0.3)', fillB: 'rgba(245,158,11,0.02)', glow: '' };
+}
+
+function TrendGraphCard({ series, bold = false }: { series: TrendSeries; bold?: boolean }) {
+  const tone = trendTone(series.trend);
+  const gradientId = `grad-${series.key}`;
+  const width = 320;
+  const height = bold ? 224 : 160;
+  const padding = 20;
+  const values = series.points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const coordinates = series.points.map((point, index) => {
+    const x = padding + (index / Math.max(series.points.length - 1, 1)) * (width - padding * 2);
+    const y = height - padding - ((point.value - min) / span) * (height - padding * 2);
+    return { x, y };
+  });
+  const linePath = coordinates.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
+  const areaPath = `${linePath} L${coordinates[coordinates.length - 1]?.x ?? width - padding},${height - padding} L${coordinates[0]?.x ?? padding},${height - padding} Z`;
+
+  return (
+    <section className={`glass-card p-4 ${bold ? 'border-emerald-300/40 ring-1 ring-emerald-300/25' : ''} ${series.improving ? tone.glow : ''}`}>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-300">{series.label}</p>
+        <span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.18em] ${series.trend === 'improvement' ? 'bg-emerald-500/20 text-emerald-200' : series.trend === 'regression' ? 'bg-red-500/20 text-red-200' : 'bg-amber-500/20 text-amber-200'}`}>
+          {series.trend}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={tone.fillA} />
+            <stop offset="100%" stopColor={tone.fillB} />
+          </linearGradient>
+        </defs>
+        {Array.from({ length: 4 }).map((_, idx) => (
+          <line key={idx} x1={padding} x2={width - padding} y1={padding + ((height - padding * 2) * idx) / 3} y2={padding + ((height - padding * 2) * idx) / 3} stroke="rgba(148,163,184,0.2)" strokeDasharray="2 3" />
+        ))}
+        <path d={areaPath} fill={`url(#${gradientId})`} className="animate-pulse" />
+        <path d={linePath} fill="none" stroke={tone.stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: series.improving ? 'drop-shadow(0 0 8px rgba(16,185,129,0.7))' : undefined }} />
+      </svg>
+      <div className="mt-2 flex justify-between text-[10px] text-slate-400">
+        <span>{series.points[0]?.date}</span>
+        <span>{series.points[series.points.length - 1]?.date}</span>
+      </div>
+    </section>
+  );
+}
+
+function MetabolicMomentumCard({ analytics }: { analytics: AdvancedAnalytics }) {
+  const score = analytics.metabolic_momentum.score;
+  const quality = score >= 75 ? 'On fire' : score >= 55 ? 'Building' : 'Recovery mode';
+
+  return (
+    <section className="glass-card p-5 shadow-[0_0_26px_rgba(16,185,129,0.3)]">
+      <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">Metabolic Momentum Score</p>
+      <div className="mt-2 flex items-end justify-between">
+        <p className="text-4xl font-semibold text-emerald-300">{score.toFixed(1)}</p>
+        <p className="text-sm text-slate-300">{quality}</p>
+      </div>
+      <div className="mt-4 space-y-2 text-xs text-slate-300">
+        <div className="flex justify-between"><span>Insulin load</span><span>{analytics.metabolic_momentum.insulin_load_component.toFixed(1)}</span></div>
+        <div className="flex justify-between"><span>Waist change</span><span>{analytics.metabolic_momentum.waist_component.toFixed(1)}</span></div>
+        <div className="flex justify-between"><span>Strength increase</span><span>{analytics.metabolic_momentum.strength_component.toFixed(1)}</span></div>
+        <div className="flex justify-between"><span>Sleep quality</span><span>{analytics.metabolic_momentum.sleep_component.toFixed(1)}</span></div>
+      </div>
+    </section>
+  );
+}
+
+function AdvancedAnalyticsSection({ analytics }: { analytics: AdvancedAnalytics | null }) {
+  if (!analytics) return null;
+
+  const graphSeries: Array<{ series: TrendSeries; bold?: boolean }> = [
+    { series: analytics.insulin_load_trend },
+    { series: analytics.waist_trend, bold: true },
+    { series: analytics.weight_trend },
+    { series: analytics.protein_intake_consistency },
+    { series: analytics.carb_intake_pattern },
+    { series: analytics.oil_usage_pattern },
+    { series: analytics.strength_score_trend },
+    { series: analytics.grip_strength_trend },
+    { series: analytics.sleep_trend },
+    { series: analytics.resting_heart_rate_trend },
+    { series: analytics.habit_compliance_trend },
+    { series: analytics.clean_streak_trend },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-sm uppercase tracking-[0.22em] text-slate-400">Advanced Analytics Engine</h2>
+      <MetabolicMomentumCard analytics={analytics} />
+      {graphSeries.map((item) => <TrendGraphCard key={item.series.key} series={item.series} bold={item.bold} />)}
+    </section>
   );
 }
 
@@ -346,6 +454,8 @@ export function Dashboard(props: DashboardProps) {
 
         {scanMessage ? <p className="text-xs text-slate-300">{scanMessage}</p> : null}
       </section>
+
+      <AdvancedAnalyticsSection analytics={props.analytics} />
 
       <ChallengeCard challenge={props.challenge} monthlyChallenge={props.monthlyChallenge} />
 
