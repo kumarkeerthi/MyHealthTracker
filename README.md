@@ -166,3 +166,16 @@ Set backend URL if needed:
 ```bash
 export NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
+
+
+## Phase 12 (Monitoring, Backup, Security, Documentation)
+- Structured JSON logging with rotating log files.
+- Prometheus metrics endpoint: `GET /metrics`.
+- Health endpoint includes DB status: `GET /health`.
+- Rate limiting + input sanitization middleware.
+- JWT auth token endpoint with expiration: `POST /auth/token`.
+- Admin-only endpoints (e.g. `GET /admin/system-status`, `GET /metabolic-advisor-report`).
+- LLM usage throttling per user (`LLM_REQUESTS_PER_HOUR`).
+- Image upload size limit enforcement for food image analysis.
+- Backup tooling: `backup.sh`, `restore.sh`, `setup_backup_cron.sh`.
+- Additional operational documentation under `docs/`.
