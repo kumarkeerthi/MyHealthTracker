@@ -76,3 +76,7 @@ python ios/scripts/generate_app_icons.py
 ```
 
 This writes all required `icon-*.png` files into the AppIcon asset catalog based on the committed SVG design.
+
+## Distribution guide
+
+- Private distribution (Phase 26): `docs/ios_phase26_private_distribution.md`
