@@ -1,82 +1,105 @@
 # Metabolic Intelligence iOS (SwiftUI + HealthKit)
 
-This folder contains a native iOS 16+ SwiftUI MVVM scaffold for the Metabolic Intelligence mobile app.
+Private native iOS 16+ app scaffold focused on **performance**, **body progress**, and **strength identity**, while mirroring the web information architecture.
 
-## Project structure
+## SwiftUI MVVM project structure
 
 - `MetabolicIntelligence/App`
-  - `MetabolicIntelligenceApp.swift` app entry, dependency bootstrapping
-  - `RootView.swift` auth gate
+  - `MetabolicIntelligenceApp.swift` app entry + dependency bootstrap
+  - `RootView.swift` authentication gate
+  - `AppDelegate.swift` APNs delegate hooks
 - `MetabolicIntelligence/Views`
-  - `LoginView`, `DashboardView`, `BodyView`, `StrengthView`, `AnalyticsView`, `ProfileView`, `ScanFoodView`, `SettingsView`
-  - `CameraPicker.swift` camera integration wrapper
-  - `Theme.swift` dark/emerald visual identity
+  - `DashboardTabView` 5-tab shell: Home / Body / Strength / Analytics / Profile
+  - `DashboardView` (Home) insulin load ring + macro/hydration/movement cards
+  - `BodyView` animated silhouette + weekly comparison + energy aura
+  - `StrengthView` strength index meter + grip/pull-up/dead-hang/pushup trackers
+  - `AnalyticsView`, `ProfileView`, `LoginView`, `ScanFoodView`, `SettingsView`
 - `MetabolicIntelligence/ViewModels`
-  - `DashboardViewModel.swift`
+  - `DashboardViewModel.swift` Combine-powered state and Home sync
 - `MetabolicIntelligence/Managers`
-  - `AuthManager.swift` JWT login/logout/session restore using Keychain
-  - `HealthKitManager.swift` permissions + daily sync + post-meal walk forwarding
-  - `PushManager.swift` APNs permission + backend subscription
-  - `KeychainHelper.swift` secure storage utility
-  - `SyncManager.swift` offline replay manager
+  - `AuthManager.swift` (JWT in Keychain)
+  - `AuthenticationManager.swift` alias for naming parity
+  - `HealthKitManager.swift` HealthKit permissions/queries/post-meal walk detection/sync
+  - `SyncManager.swift` offline queue replay
+  - `PushManager.swift` APNs setup + backend subscribe
+  - `KeychainHelper.swift` secure storage
 - `MetabolicIntelligence/Services`
-  - `APIClient.swift` URLSession networking + typed request helpers
+  - `APIClient.swift` URLSession transport layer
+  - `APIService.swift` app endpoint abstraction
 - `MetabolicIntelligence/Persistence`
-  - `OfflineStore.swift` local cache queue for offline mode
+  - `OfflineStore.swift` cache for pending logs + last summary + last vitals
 - `MetabolicIntelligence/Models`
-  - API request/response models
-- `MetabolicIntelligence/Resources/Assets.xcassets`
-  - `AppIcon.appiconset` icon assets
+  - typed API payloads + health/strength snapshots
+- `MetabolicIntelligence/Resources/Assets.xcassets/AppIcon.appiconset`
+  - Dark charcoal + emerald shield + upward pulse icon set
 
-## Implemented backend endpoints
+## HealthKit integration
 
-- `POST /login`
-- `GET /daily-summary`
-- `POST /log-food`
+`HealthKitManager` includes:
+
+- `requestPermissions()`
+- `fetchDailySteps()`
+- `fetchRestingHR()`
+- `fetchSleepHours()`
+- `fetchWorkouts(since:)`
+- `detectPostMealWalk()`
+- `syncDailyVitals()` with batched backend sync
+
+Read permissions requested:
+
+- Step count
+- Resting heart rate
+- HRV (SDNN)
+- Sleep analysis
+- Workouts
+- VO2 Max (if available)
+
+### Post-meal walk logic
+
+A walk bonus is set true if, within 60 minutes after last meal:
+
+1. A walking workout exists, **or**
+2. A step spike is detected relative to pre-meal baseline.
+
+## Backend sync endpoints
+
 - `POST /log-vitals`
 - `POST /log-exercise`
-- `POST /analyze-food-image`
-- `POST /push/subscribe`
+- `POST /apple-sync`
 
-## Sample API calls
+`HealthKitManager.syncDailyVitals()` sends batched payload data and enqueues offline fallback events via `SyncManager`.
 
-```swift
-// Login
-try await authManager.login(email: "you@example.com", password: "••••••••")
+## Offline support
 
-// Daily summary
-await dashboardViewModel.load(token: token)
+`OfflineStore` caches:
 
-// Log food
-try await APIClient.shared.requestNoResponse(path: "log-food", token: token, payload: foodPayload)
+- last daily summary (`last-daily-summary.json`)
+- last vitals (`last-vitals.json`)
+- pending logs (`pending-events.json`)
 
-// Analyze camera image
-let analysis = try await APIClient.shared.uploadImage(path: "analyze-food-image", token: token, imageData: imageData)
-```
+`SyncManager.flushPendingIfNeeded()` retries in-order when network returns.
 
-## Setup notes for Xcode
+## Security
 
-1. Create an iOS App target (`iOS 16.0+`) and add files from `MetabolicIntelligence/`.
-2. Enable **HealthKit** capability.
-3. Enable **Push Notifications** and Background Modes (remote notifications).
-4. Add camera permission key in `Info.plist`:
-   - `NSCameraUsageDescription`
-5. Add HealthKit usage descriptions:
-   - `NSHealthShareUsageDescription`
-   - `NSHealthUpdateUsageDescription` (if write access added later)
+- JWT token persisted in Keychain (`AuthManager` + `KeychainHelper`)
+- HTTPS-only API base URL in `APIClient`
+- URLSession with connectivity-aware config
 
+## HealthKit/permission Info.plist entries
 
-## App icon generation (text-only repository friendly)
+Add to target `Info.plist`:
 
-PNG AppIcon binaries are intentionally **not committed** to keep PR diffs text-only.
-Generate them locally before building in Xcode:
+- `NSHealthShareUsageDescription` = "Metabolic Intelligence reads health metrics to power your daily body and strength dashboard."
+- `NSHealthUpdateUsageDescription` = "Metabolic Intelligence may write selected workout metadata to improve coaching continuity."
+- `NSCameraUsageDescription` = "Metabolic Intelligence uses the camera to scan meals for nutrition analysis."
+
+## App icon generation
+
+PNG icon files are generated from the committed vector design:
 
 ```bash
 python ios/scripts/generate_app_icons.py
 ```
 
-This writes all required `icon-*.png` files into the AppIcon asset catalog based on the committed SVG design.
-
-## Distribution guide
-
-- Private distribution (Phase 26): `docs/ios_phase26_private_distribution.md`
+This writes required AppIcon sizes to:
+`ios/MetabolicIntelligence/Resources/Assets.xcassets/AppIcon.appiconset/`
