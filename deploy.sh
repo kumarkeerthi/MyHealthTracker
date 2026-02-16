@@ -22,6 +22,18 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
+apt_install_missing() {
+  local packages=()
+  for pkg in "$@"; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || packages+=("$pkg")
+  done
+
+  if (( ${#packages[@]} > 0 )); then
+    log "Installing missing packages: ${packages[*]}"
+    apt-get install -y "${packages[@]}"
+  fi
+}
+
 random_secret() {
   openssl rand -base64 48 | tr -d '\n'
 }
@@ -53,8 +65,13 @@ trap rollback ERR
 
 install_packages() {
   if [[ "$EUID" -ne 0 ]]; then
+    command -v sudo >/dev/null 2>&1 || die "sudo is required when running as non-root. Re-run as root or install sudo first."
     warn "Root privileges required for package installation and firewall setup. Re-running with sudo."
-    exec sudo -E bash "$0"
+    exec sudo -E bash "$0" "$@"
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    die "This installer currently supports apt-based systems only (Ubuntu/Debian)."
   fi
 
   source /etc/os-release
@@ -64,7 +81,23 @@ install_packages() {
 
   log "Installing required packages..."
   apt-get update
-  apt-get install -y ca-certificates curl gnupg lsb-release software-properties-common git nginx certbot ufw
+  apt_install_missing \
+    apt-transport-https \
+    ca-certificates \
+    cron \
+    curl \
+    git \
+    gnupg \
+    iproute2 \
+    lsb-release \
+    nginx \
+    openssl \
+    software-properties-common \
+    ufw
+
+  if ! command -v certbot >/dev/null 2>&1; then
+    apt_install_missing certbot
+  fi
 
   if ! command -v docker >/dev/null 2>&1; then
     install -m 0755 -d /etc/apt/keyrings
@@ -80,7 +113,12 @@ install_packages() {
     apt-get install -y docker-compose-plugin
   fi
 
+  if ! docker compose version >/dev/null 2>&1; then
+    die "Docker Compose plugin is not available. Ensure package docker-compose-plugin can be installed on this host."
+  fi
+
   systemctl enable --now docker
+  systemctl enable --now cron
 }
 
 validate_environment() {
@@ -280,7 +318,7 @@ SUMMARY
 
 main() {
   backup_existing_state
-  install_packages
+  install_packages "$@"
   validate_environment
   prompt_inputs
   generate_configuration
