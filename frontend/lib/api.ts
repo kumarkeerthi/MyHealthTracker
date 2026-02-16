@@ -148,6 +148,54 @@ export type RecipeSuggestion = {
   recipes: Recipe[];
 };
 
+export type MetabolicPhasePerformance = {
+  phase_model: {
+    current_phase: 'RESET' | 'STABILIZATION' | 'RECOMPOSITION' | 'PERFORMANCE' | 'MAINTENANCE';
+    identity: string;
+    rules: {
+      carb_ceiling: string;
+      rice_rule: string;
+      fruit_rule: string;
+      strength_rule: string;
+      identity: string;
+    };
+    all_phases: Array<{
+      phase: 'RESET' | 'STABILIZATION' | 'RECOMPOSITION' | 'PERFORMANCE' | 'MAINTENANCE';
+      identity: string;
+      carb_ceiling: string;
+      strength_rule: string;
+    }>;
+  };
+  transition_logic: {
+    should_transition: boolean;
+    reason: string;
+    signals: Record<string, boolean | number>;
+  };
+  carb_tolerance: {
+    carb_challenge_day_logged: boolean;
+    protocol: string;
+    next_day_metrics: Record<string, number | null>;
+    carb_tolerance_index: number;
+    evaluation: string;
+  };
+  performance_dashboard: {
+    strength_index: number;
+    grip_score: number;
+    carb_tolerance_index: number;
+    recovery_score: number;
+    sleep_consistency: number;
+  };
+  periodization: {
+    monthly_cycle: Array<{ week: number; focus: string; target: string }>;
+    monkey_bar_metrics: Record<string, number>;
+  };
+  example_transition_scenario: {
+    starting_phase: string;
+    outcome: string;
+    next_constraints: Record<string, string>;
+  };
+};
+
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -163,7 +211,7 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence] = await Promise.all([
+  const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
@@ -174,6 +222,7 @@ export async function getDashboardData() {
     readJson<RecipeSuggestion>('/recipes/suggestions?user_id=1'),
     readJson<AdvancedAnalytics>('/analytics/advanced?user_id=1&days=30'),
     readJson<HabitIntelligence>('/habits/intelligence?user_id=1&days=90'),
+    readJson<MetabolicPhasePerformance>('/metabolic/performance-view?user_id=1'),
   ]);
 
   return {
@@ -187,6 +236,7 @@ export async function getDashboardData() {
     recipeSuggestion,
     analytics,
     habitIntelligence,
+    metabolicPerformance,
   };
 }
 

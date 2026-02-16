@@ -72,6 +72,14 @@ class RecommendationStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class MetabolicPhase(str, Enum):
+    RESET = "RESET"
+    STABILIZATION = "STABILIZATION"
+    RECOMPOSITION = "RECOMPOSITION"
+    PERFORMANCE = "PERFORMANCE"
+    MAINTENANCE = "MAINTENANCE"
+
+
 class MetabolicProfile(Base):
     __tablename__ = "metabolic_profiles"
 
@@ -278,6 +286,11 @@ class MetabolicAgentState(Base):
     carb_ceiling_current: Mapped[int] = mapped_column(Integer, default=90)
     protein_target_current: Mapped[int] = mapped_column(Integer, default=90)
     fruit_allowance_current: Mapped[int] = mapped_column(Integer, default=1)
+    metabolic_phase: Mapped[MetabolicPhase] = mapped_column(
+        SqlEnum(MetabolicPhase, name="metabolic_phase_enum"),
+        default=MetabolicPhase.RESET,
+    )
+    metabolic_identity: Mapped[str] = mapped_column(String(40), default="Repair Mode")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

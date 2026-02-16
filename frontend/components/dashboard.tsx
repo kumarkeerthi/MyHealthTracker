@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Bolt, Camera, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
-import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type HabitIntelligence, type ImageAnalyzedFood, type TrendSeries } from '@/lib/api';
+import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type HabitIntelligence, type ImageAnalyzedFood, type MetabolicPhasePerformance, type TrendSeries } from '@/lib/api';
 
 type DashboardProps = {
   insulinScore: number;
@@ -58,6 +58,7 @@ type DashboardProps = {
   }>;
   analytics: AdvancedAnalytics | null;
   habitIntelligence: HabitIntelligence | null;
+  metabolicPerformance: MetabolicPhasePerformance | null;
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -300,8 +301,47 @@ function HabitIntelligenceSection({ intelligence }: { intelligence: HabitIntelli
   );
 }
 
+function PerformanceViewSection({ performance }: { performance: MetabolicPhasePerformance | null }) {
+  if (!performance) return null;
+
+  return (
+    <section className="space-y-3">
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Phase Model</p>
+        <p className="mt-1 text-lg font-semibold text-electric">{performance.phase_model.current_phase} · {performance.phase_model.identity}</p>
+        <p className="mt-2 text-sm text-slate-300">{performance.phase_model.rules.carb_ceiling} carbs • {performance.phase_model.rules.rice_rule}</p>
+        <p className="text-sm text-slate-300">{performance.phase_model.rules.strength_rule}</p>
+      </div>
+
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Performance Dashboard</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <p>Strength Index: <span className="text-emerald-300">{performance.performance_dashboard.strength_index.toFixed(1)}</span></p>
+          <p>Grip Score: <span className="text-emerald-300">{performance.performance_dashboard.grip_score.toFixed(1)}</span></p>
+          <p>Carb Tolerance: <span className="text-emerald-300">{performance.performance_dashboard.carb_tolerance_index.toFixed(1)}</span></p>
+          <p>Recovery: <span className="text-emerald-300">{performance.performance_dashboard.recovery_score.toFixed(1)}</span></p>
+          <p>Sleep Consistency: <span className="text-emerald-300">{performance.performance_dashboard.sleep_consistency.toFixed(1)}</span></p>
+        </div>
+      </div>
+
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Carb Challenge Day</p>
+        <p className="mt-2 text-sm text-slate-200">{performance.carb_tolerance.protocol}</p>
+        <p className="text-sm text-slate-300">Tolerance Index: {performance.carb_tolerance.carb_tolerance_index.toFixed(1)} ({performance.carb_tolerance.evaluation})</p>
+      </div>
+
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Monthly Periodization</p>
+        <div className="mt-2 space-y-1 text-sm text-slate-200">
+          {performance.periodization.monthly_cycle.map((week) => <p key={week.week}>Week {week.week}: {week.focus}</p>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function Dashboard(props: DashboardProps) {
-  const [tab, setTab] = useState<'metabolic' | 'exercise'>('metabolic');
+  const [tab, setTab] = useState<'metabolic' | 'exercise' | 'performance'>('metabolic');
   const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
   const [scanMealContext, setScanMealContext] = useState('lunch');
@@ -383,9 +423,10 @@ export function Dashboard(props: DashboardProps) {
   return (
     <main className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-6 text-white animate-riseIn">
       <section className="glass-card p-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button className={`rounded-lg p-2 text-sm ${tab === 'metabolic' ? 'bg-electric/30' : 'bg-white/5'}`} onClick={() => setTab('metabolic')}>Metabolic</button>
           <button className={`rounded-lg p-2 text-sm ${tab === 'exercise' ? 'bg-electric/30' : 'bg-white/5'}`} onClick={() => setTab('exercise')}>Exercise</button>
+          <button className={`rounded-lg p-2 text-sm ${tab === 'performance' ? 'bg-electric/30' : 'bg-white/5'}`} onClick={() => setTab('performance')}>Performance</button>
         </div>
       </section>
 
@@ -433,7 +474,7 @@ export function Dashboard(props: DashboardProps) {
             ))}
           </section>
         </>
-      ) : (
+      ) : tab === 'exercise' ? (
         <>
           <section className="glass-card p-5">
             <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Strength Index</p>
@@ -451,7 +492,7 @@ export function Dashboard(props: DashboardProps) {
 
           <StrengthGraph values={props.weeklyStrengthGraph} />
         </>
-      )}
+      ) : <PerformanceViewSection performance={props.metabolicPerformance} />}
 
 
       <section className="glass-card p-5 space-y-3">
