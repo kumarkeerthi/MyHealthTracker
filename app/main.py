@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.data.seed_data import seed_initial_data
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
+from app.services.coaching_scheduler import coaching_scheduler
 
 app = FastAPI(title=settings.app_name)
 app.include_router(router)
@@ -18,6 +19,12 @@ def startup_event():
         seed_initial_data(db)
     finally:
         db.close()
+    coaching_scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    coaching_scheduler.shutdown()
 
 
 @app.get("/health")

@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models import DailyLog, ExerciseCategory, ExerciseEntry, FoodItem, InsulinScore, MealEntry, User, VitalsEntry
 from app.schemas.schemas import (
     AppleHealthImportRequest,
+    CoachingMessageResponse,
     DailySummaryResponse,
     ExerciseSummaryResponse,
     LLMAnalyzeRequest,
@@ -16,14 +17,19 @@ from app.schemas.schemas import (
     LogFoodRequest,
     LogFoodResponse,
     LogVitalsRequest,
+    NotificationEventRequest,
+    NotificationSettingsResponse,
     ProfileResponse,
+    UpdateNotificationSettingsRequest,
     UpdateProfileRequest,
     VitalsSummaryResponse,
+    WhatsAppMessageRequest,
     WeeklySummaryResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
+from app.services.notification_service import notification_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -113,6 +119,7 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     status = evaluate_daily_status(db, daily_log, profile)
 
     db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
+    alerts = notification_service.evaluate_daily_alerts(db, payload.user_id, daily_log, status["insulin_load_score"])
     db.commit()
 
     validations = {
@@ -397,6 +404,106 @@ def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends
 @router.post("/external-event")
 def external_event(payload: dict):
     return {"status": "accepted", "message": "External event placeholder", "payload": payload}
+
+
+@router.post("/whatsapp-message", response_model=CoachingMessageResponse)
+def whatsapp_message(payload: WhatsAppMessageRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = get_or_create_metabolic_profile(db, user)
+    consumed_at = payload.received_at or datetime.utcnow()
+    analysis = llm_service.analyze(db, user, profile, payload.text, consumed_at)
+
+    title = "Metabolic coaching response"
+    body = (
+        f"Status: {analysis['approval_status'].upper()}\n"
+        f"Reason: {analysis['reasoning']}\n"
+        f"Action: {analysis['recommended_adjustment']}"
+    )
+    notification_service.send_message(
+        db,
+        payload.user_id,
+        channel="whatsapp",
+        title=title,
+        body=body,
+        metadata={"food_items": analysis.get("food_items", [])},
+    )
+    db.commit()
+
+    return CoachingMessageResponse(
+        channel="whatsapp",
+        title=title,
+        body=body,
+        insulin_load_delta=analysis["insulin_load_delta"],
+        approval_status=analysis["approval_status"],
+        suggested_action=analysis["recommended_adjustment"],
+    )
+
+
+@router.post("/notification-event")
+def notification_event(payload: NotificationEventRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    title = f"Notification event: {payload.event_type}"
+    body = f"Event payload accepted for processing ({payload.event_type})."
+    result = notification_service.send_message(
+        db,
+        payload.user_id,
+        channel="push",
+        title=title,
+        body=body,
+        metadata=payload.payload,
+    )
+    db.commit()
+    return {"status": "accepted", "delivery": result}
+
+
+@router.get("/notification-settings", response_model=NotificationSettingsResponse)
+def get_notification_settings(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = notification_service.get_or_create_settings(db, user_id)
+    db.commit()
+    return NotificationSettingsResponse(
+        user_id=user_id,
+        whatsapp_enabled=settings.whatsapp_enabled,
+        push_enabled=settings.push_enabled,
+        email_enabled=settings.email_enabled,
+        silent_mode=settings.silent_mode,
+    )
+
+
+@router.put("/notification-settings", response_model=NotificationSettingsResponse)
+def update_notification_settings(
+    payload: UpdateNotificationSettingsRequest,
+    user_id: int = Query(default=1),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = notification_service.get_or_create_settings(db, user_id)
+    updates = payload.model_dump(exclude_none=True)
+    for key, value in updates.items():
+        setattr(settings, key, value)
+
+    db.commit()
+    db.refresh(settings)
+
+    return NotificationSettingsResponse(
+        user_id=user_id,
+        whatsapp_enabled=settings.whatsapp_enabled,
+        push_enabled=settings.push_enabled,
+        email_enabled=settings.email_enabled,
+        silent_mode=settings.silent_mode,
+    )
 
 
 @router.post("/llm/analyze", response_model=LLMAnalyzeResponse)

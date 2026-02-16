@@ -120,9 +120,14 @@ export function Dashboard(props: DashboardProps) {
       </section>
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-[#090D15]/75 px-4 py-3 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-3">
-          <SquareMenu className="h-4 w-4 text-slate-400" />
-          <span className="text-sm text-slate-400">Ask for workout + meal optimization…</span>
+        <div className="mx-auto max-w-md space-y-2">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-3">
+            <SquareMenu className="h-4 w-4 text-slate-400" />
+            <span className="text-sm text-slate-400">Ask for workout + meal optimization…</span>
+          </div>
+          <a href="/settings/notifications" className="block text-center text-xs text-electric underline">
+            Manage notification settings
+          </a>
         </div>
       </div>
     </main>
