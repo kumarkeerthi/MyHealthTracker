@@ -288,6 +288,45 @@ class LLMService:
         content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
         return content.strip() or None
 
+    def summarize_metabolic_agent_weekly_analysis(self, structured_payload: dict[str, Any]) -> str | None:
+        if not self.api_key:
+            return None
+
+        body = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Summarize deterministic weekly metabolic analysis in a motivating tone. "
+                        "Do not invent rules, thresholds, or recommendations. "
+                        "Only restate deterministic findings provided in JSON."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(structured_payload)},
+            ],
+            "temperature": 0.2,
+        }
+
+        http_request = request.Request(
+            url="https://api.openai.com/v1/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(http_request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (error.URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
+        content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content.strip() or None
+
     def _fallback_extract(self, db: Session, text: str) -> dict[str, Any]:
         lowered = text.lower()
         foods = db.scalars(select(FoodItem)).all()
