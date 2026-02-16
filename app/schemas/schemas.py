@@ -281,6 +281,45 @@ class ExerciseSummaryResponse(BaseModel):
     weekly_strength_graph: list[float]
 
 
+
+
+class AnalyticsPointResponse(BaseModel):
+    date: date
+    value: float
+
+
+class TrendSeriesResponse(BaseModel):
+    key: str
+    label: str
+    trend: str
+    improving: bool
+    points: list[AnalyticsPointResponse]
+
+
+class MetabolicMomentumResponse(BaseModel):
+    score: float
+    insulin_load_component: float
+    waist_component: float
+    strength_component: float
+    sleep_component: float
+
+
+class AdvancedAnalyticsResponse(BaseModel):
+    start_date: date
+    end_date: date
+    insulin_load_trend: TrendSeriesResponse
+    waist_trend: TrendSeriesResponse
+    weight_trend: TrendSeriesResponse
+    protein_intake_consistency: TrendSeriesResponse
+    carb_intake_pattern: TrendSeriesResponse
+    oil_usage_pattern: TrendSeriesResponse
+    strength_score_trend: TrendSeriesResponse
+    grip_strength_trend: TrendSeriesResponse
+    sleep_trend: TrendSeriesResponse
+    resting_heart_rate_trend: TrendSeriesResponse
+    habit_compliance_trend: TrendSeriesResponse
+    clean_streak_trend: TrendSeriesResponse
+    metabolic_momentum: MetabolicMomentumResponse
 class VitalsSummaryResponse(BaseModel):
     user_id: int
     latest_steps_total: int

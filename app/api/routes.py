@@ -48,6 +48,7 @@ from app.schemas.schemas import (
     AnalyzeFoodImageResponse,
     ConfirmFoodImageLogRequest,
     ConfirmFoodImageLogResponse,
+    AdvancedAnalyticsResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -57,6 +58,7 @@ from app.services.notification_service import notification_service
 from app.services.metabolic_advisor_service import metabolic_advisor_service
 from app.services.food_image_service import food_image_service
 from app.services.recipe_service import recipe_service
+from app.services.analytics_engine import analytics_engine
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -341,6 +343,18 @@ def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
     db.add(entry)
     db.commit()
     return {"status": "ok", "exercise_entry_id": entry.id}
+
+
+@router.get("/analytics/advanced", response_model=AdvancedAnalyticsResponse)
+def advanced_analytics(
+    user_id: int = Query(default=1),
+    days: int = Query(default=30, ge=7, le=180),
+    db: Session = Depends(get_db),
+):
+    analytics = analytics_engine.build_advanced_analytics(db, user_id=user_id, days=days)
+    if not analytics:
+        raise HTTPException(status_code=404, detail="User not found")
+    return AdvancedAnalyticsResponse(**analytics)
 
 
 @router.get("/weekly-summary", response_model=WeeklySummaryResponse)
