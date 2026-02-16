@@ -1,4 +1,5 @@
 from app.models.models import (
+    AgentRunCadence,
     ChallengeAssignment,
     ChallengeFrequency,
     ChallengeStreak,
@@ -11,9 +12,12 @@ from app.models.models import (
     HabitDefinition,
     InsulinScore,
     MealEntry,
+    MetabolicAgentState,
     MetabolicRecommendationLog,
     MetabolicProfile,
     NotificationSettings,
+    PendingRecommendation,
+    RecommendationStatus,
     Recipe,
     User,
     VitalsEntry,
@@ -38,4 +42,8 @@ __all__ = [
     "HabitChallengeType",
     "HabitDefinition",
     "HabitCheckin",
+    "MetabolicAgentState",
+    "PendingRecommendation",
+    "AgentRunCadence",
+    "RecommendationStatus",
 ]

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FoodItem, HabitChallengeType, HabitCheckin, HabitDefinition, MetabolicProfile, NotificationSettings, Recipe, User
+from app.models import FoodItem, HabitChallengeType, HabitCheckin, HabitDefinition, MetabolicAgentState, MetabolicProfile, NotificationSettings, Recipe, User
 
 
 FOOD_ITEMS = [
@@ -181,6 +181,18 @@ def seed_initial_data(db: Session) -> None:
     notification_settings_exists = db.scalar(select(NotificationSettings.id).where(NotificationSettings.user_id == user.id))
     if not notification_settings_exists:
         db.add(NotificationSettings(user_id=user.id))
+
+    agent_state_exists = db.scalar(select(MetabolicAgentState.user_id).where(MetabolicAgentState.user_id == user.id))
+    if not agent_state_exists:
+        db.add(
+            MetabolicAgentState(
+                user_id=user.id,
+                carb_ceiling_current=user.carb_ceiling,
+                protein_target_current=user.protein_target_min,
+                fruit_allowance_current=1,
+                notes="Initialized from seed defaults.",
+            )
+        )
 
     existing_food_names = set(db.scalars(select(FoodItem.name)).all())
     for food in FOOD_ITEMS:

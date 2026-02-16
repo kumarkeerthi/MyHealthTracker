@@ -38,6 +38,8 @@ class User(Base):
     challenge_streaks: Mapped[list["ChallengeStreak"]] = relationship(back_populates="user")
     metabolic_recommendation_logs: Mapped[list["MetabolicRecommendationLog"]] = relationship(back_populates="user")
     habit_checkins: Mapped[list["HabitCheckin"]] = relationship(back_populates="user")
+    metabolic_agent_state: Mapped["MetabolicAgentState"] = relationship(back_populates="user", uselist=False)
+    pending_recommendations: Mapped[list["PendingRecommendation"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -56,6 +58,18 @@ class HabitChallengeType(str, Enum):
     STRICT = "STRICT"
     MICRO = "MICRO"
     SUPPORT = "SUPPORT"
+
+
+class AgentRunCadence(str, Enum):
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+
+
+class RecommendationStatus(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
 
 
 class MetabolicProfile(Base):
@@ -249,6 +263,50 @@ class MetabolicRecommendationLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="metabolic_recommendation_logs")
+
+
+class MetabolicAgentState(Base):
+    __tablename__ = "metabolic_agent_state"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    last_daily_scan: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_weekly_scan: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_monthly_review: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_carb_adjustment: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_protein_adjustment: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_strength_adjustment: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    carb_ceiling_current: Mapped[int] = mapped_column(Integer, default=90)
+    protein_target_current: Mapped[int] = mapped_column(Integer, default=90)
+    fruit_allowance_current: Mapped[int] = mapped_column(Integer, default=1)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="metabolic_agent_state")
+
+
+class PendingRecommendation(Base):
+    __tablename__ = "pending_recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    cadence: Mapped[AgentRunCadence] = mapped_column(SqlEnum(AgentRunCadence, name="agent_run_cadence_enum"), nullable=False)
+    recommendation_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    confidence_level: Mapped[float] = mapped_column(Float, default=0.7)
+    status: Mapped[RecommendationStatus] = mapped_column(
+        SqlEnum(RecommendationStatus, name="pending_recommendation_status_enum"),
+        default=RecommendationStatus.PENDING,
+    )
+    data_used: Mapped[str] = mapped_column(Text, nullable=False)
+    threshold_triggered: Mapped[str] = mapped_column(String(220), nullable=False)
+    historical_comparison: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="pending_recommendations")
 
 
 class ChallengeAssignment(Base):
