@@ -3,7 +3,7 @@ from datetime import datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import DailyLog, MetabolicProfile, User, VitalsEntry
+from app.models import DailyLog, ExerciseEntry, MetabolicProfile, User, VitalsEntry
 from app.services.exercise_engine import calculate_post_meal_walk_bonus
 from app.services.insulin_engine import calculate_insulin_load_score, classify_insulin_score
 from app.services.vitals_engine import calculate_vitals_risk_score
@@ -69,15 +69,31 @@ def validate_protein_minimum(total_protein: float, protein_min: float) -> bool:
     return total_protein >= protein_min
 
 
+def calculate_insulin_load_reduction_bonus(daily_log: DailyLog, exercise_entries: list[ExerciseEntry]) -> float:
+    if not daily_log.meal_entries:
+        return 0.0
+
+    bonus = 0.0
+    for meal in daily_log.meal_entries:
+        for exercise in exercise_entries:
+            delta_seconds = (exercise.performed_at - meal.consumed_at).total_seconds()
+            if 0 <= delta_seconds <= 3600:
+                bonus += 1.25
+                break
+    return bonus
+
+
 def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicProfile) -> dict:
-    walks = list(daily_log.user.exercise_entries)
-    walk_bonus = calculate_post_meal_walk_bonus([entry for entry in walks if entry.daily_log_id == daily_log.id])
+    daily_exercises = db.scalars(select(ExerciseEntry).where(ExerciseEntry.daily_log_id == daily_log.id)).all()
+    walk_bonus = calculate_post_meal_walk_bonus(daily_exercises)
+    insulin_load_reduction_bonus = calculate_insulin_load_reduction_bonus(daily_log, daily_exercises)
+    metabolic_bonus = walk_bonus + insulin_load_reduction_bonus
 
     insulin_score, raw_score = calculate_insulin_load_score(
         daily_log.total_carbs,
         daily_log.total_hidden_oil,
         daily_log.total_protein,
-        walk_bonus,
+        metabolic_bonus,
     )
 
     vitals_entries = db.scalars(
@@ -96,4 +112,5 @@ def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicPr
         "oil_compliance": validate_oil_limit(daily_log.total_hidden_oil, profile.oil_limit_tsp),
         "fasting_compliance": True,
         "vitals_risk_flag": vitals_risk["flag"],
+        "insulin_load_reduction_bonus": insulin_load_reduction_bonus,
     }

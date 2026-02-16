@@ -2,7 +2,7 @@ import { Dashboard } from '@/components/dashboard';
 import { getDashboardData } from '@/lib/api';
 
 export default async function Home() {
-  const { daily, profile, vitals } = await getDashboardData();
+  const { daily, profile, vitals, exercise } = await getDashboardData();
 
   const insulin = Math.round(daily?.insulin_load_score ?? 38);
   const complianceSignals = [daily?.validations?.protein_minimum, daily?.validations?.carb_limit, daily?.validations?.oil_limit].filter(Boolean).length;
@@ -22,6 +22,11 @@ export default async function Home() {
       sleepHours={vitals?.latest_sleep_hours ?? 6.8}
       proteinHit={daily?.validations?.protein_minimum ?? true}
       carbUnderCeiling={daily?.validations?.carb_limit ?? true}
+      strengthIndex={exercise?.strength_index ?? 0}
+      gripImprovementPct={exercise?.grip_strength_improvement_pct ?? 0}
+      monkeyBarProgress={exercise?.monkey_bar_progress ?? { dead_hang_duration_seconds: 0, pull_up_count: 0, assisted_pull_up_reps: 0, grip_endurance_seconds: 0 }}
+      weeklyStrengthGraph={exercise?.weekly_strength_graph ?? [0, 0, 0, 0, 0, 0, 0]}
+      metabolicExerciseMessage={exercise?.metabolic_message ?? 'Strength momentum stable'}
     />
   );
 }

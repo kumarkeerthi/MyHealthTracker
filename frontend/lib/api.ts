@@ -19,6 +19,19 @@ export type VitalsSummary = {
   latest_sleep_hours: number | null;
 };
 
+export type ExerciseSummary = {
+  strength_index: number;
+  grip_strength_improvement_pct: number;
+  metabolic_message: string;
+  monkey_bar_progress: {
+    dead_hang_duration_seconds: number;
+    pull_up_count: number;
+    assisted_pull_up_reps: number;
+    grip_endurance_seconds: number;
+  };
+  weekly_strength_graph: number[];
+};
+
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -34,15 +47,17 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function getDashboardData() {
-  const [daily, profile, vitals] = await Promise.all([
+  const [daily, profile, vitals, exercise] = await Promise.all([
     readJson<DailySummary>('/daily-summary?user_id=1'),
     readJson<Profile>('/profile?user_id=1'),
     readJson<VitalsSummary>('/vitals-summary?user_id=1'),
+    readJson<ExerciseSummary>('/exercise-summary?user_id=1'),
   ]);
 
   return {
     daily,
     profile,
     vitals,
+    exercise,
   };
 }
