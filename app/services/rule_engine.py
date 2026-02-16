@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DailyLog, ExerciseEntry, MetabolicProfile, User, VitalsEntry
 from app.services.exercise_engine import calculate_post_meal_walk_bonus
-from app.services.insulin_engine import calculate_insulin_load_score, classify_insulin_score
+from app.services.insulin_engine import calculate_dinner_adjustment, calculate_insulin_load_score, classify_insulin_score
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 
@@ -93,6 +93,13 @@ def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicPr
     insulin_load_reduction_bonus = calculate_insulin_load_reduction_bonus(daily_log, daily_exercises)
     metabolic_bonus = walk_bonus + insulin_load_reduction_bonus
 
+    dinner_adjustment = calculate_dinner_adjustment(
+        dinner_carbs=(daily_log.dinner_meal or {}).get("carbs", 0.0),
+        dinner_protein=(daily_log.dinner_meal or {}).get("protein", 0.0),
+        dinner_mode=daily_log.dinner_mode,
+        dinner_logged_after_20=bool(daily_log.dinner_logged_at and daily_log.dinner_logged_at.time().hour >= 20),
+    )
+
     insulin_score, raw_score = calculate_insulin_load_score(
         daily_log.total_carbs,
         daily_log.total_hidden_oil,
@@ -101,6 +108,8 @@ def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicPr
         daily_log.total_sugar,
         daily_log.total_hdl_support,
     )
+    insulin_score = max(0.0, min(100.0, round(insulin_score + float(dinner_adjustment["impact"]), 2)))
+    raw_score = round(raw_score + float(dinner_adjustment["impact"]), 2)
 
     vitals_entries = db.scalars(
         select(VitalsEntry)
@@ -119,4 +128,7 @@ def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicPr
         "fasting_compliance": True,
         "vitals_risk_flag": vitals_risk["flag"],
         "insulin_load_reduction_bonus": insulin_load_reduction_bonus,
+        "dinner_insulin_impact": float(dinner_adjustment["impact"]),
+        "evening_insulin_spike_risk": bool(dinner_adjustment["evening_spike_risk"]),
+        "dinner_mode": str(dinner_adjustment["mode"]),
     }

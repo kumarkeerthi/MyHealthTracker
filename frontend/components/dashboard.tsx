@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, Home, Trophy, User, Dumbbell, Droplets } from 'lucide-react';
 import type { AdvancedAnalytics, HabitIntelligence, MetabolicPhasePerformance } from '@/lib/api';
@@ -98,6 +98,12 @@ type DashboardProps = {
   fastingWindowIntact: boolean;
   waistChangeCm: number;
   noCarbDinnerStreak: number;
+  dinnerLogged: boolean;
+  dinnerCarbs: number;
+  dinnerProtein: number;
+  dinnerMode: string | null;
+  dinnerInsulinImpact: number;
+  eveningInsulinSpikeRisk: boolean;
 };
 
 type TabKey = 'home' | 'body' | 'strength' | 'analytics' | 'profile';
@@ -229,7 +235,35 @@ export function Dashboard(props: DashboardProps) {
         <motion.div key={tab + mode} {...tabTransition}>
           {tab === 'home' && (
             <div className="space-y-4">
-              <DashboardView insulinScore={props.insulinScore} compliance={props.compliance} hydrationScore={props.hydrationScore} waterMl={props.waterMl} sleepHours={props.sleepHours} protein={props.protein} carbs={props.carbs} oil={props.oil} proteinHit={props.proteinHit} carbUnderCeiling={props.carbUnderCeiling} hydrationTargetAchieved={props.hydrationTargetAchieved} strengthLogged={props.strengthIndex > 0} />
+              <DashboardView
+                insulinScore={props.insulinScore}
+                compliance={props.compliance}
+                hydrationScore={props.hydrationScore}
+                waterMl={props.waterMl}
+                sleepHours={props.sleepHours}
+                protein={props.protein}
+                carbs={props.carbs}
+                oil={props.oil}
+                proteinHit={props.proteinHit}
+                carbUnderCeiling={props.carbUnderCeiling}
+                hydrationTargetAchieved={props.hydrationTargetAchieved}
+                strengthLogged={props.strengthIndex > 0}
+                dinnerLogged={props.dinnerLogged}
+                dinnerCarbs={props.dinnerCarbs}
+                dinnerProtein={props.dinnerProtein}
+                dinnerMode={props.dinnerMode}
+                dinnerInsulinImpact={props.dinnerInsulinImpact}
+                eveningInsulinSpikeRisk={props.eveningInsulinSpikeRisk}
+              />
+              <section className="glass-card p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Guided Day Flow</p>
+                <div className="mt-2 space-y-2 text-sm text-slate-200">
+                  <p><span className="text-emerald-300">Morning:</span> Identity state → breakfast log → insulin check → hydration quick log.</p>
+                  <p><span className="text-electric">Post-lunch:</span> lunch log → movement reminder → insulin refresh → walk prompt.</p>
+                  <p><span className="text-cyan-300">Evening:</span> day review → hydration summary → strength reminder → tomorrow suggestion.</p>
+                </div>
+              </section>
+
               <section className="glass-card p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Movement Panel</p>
                 <div className="mt-2 space-y-1 text-sm text-slate-200">
@@ -282,10 +316,19 @@ export function Dashboard(props: DashboardProps) {
       <nav className="fixed inset-x-0 bottom-0 mx-auto w-full max-w-md border-t border-white/10 bg-slate-950/95 px-3 pb-5 pt-2 backdrop-blur-xl">
         <div className="grid grid-cols-5 gap-1">
           {tabButtons.map((item) => (
-            <button key={item.key} onClick={() => setTab(item.key)} className={`flex flex-col items-center rounded-xl px-1 py-2 text-[11px] ${tab === item.key ? 'bg-electric/30 text-white' : 'text-slate-400'}`}>
+            <motion.div
+              key={item.key}
+              onClick={() => setTab(item.key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => { if (event.key === "Enter" || event.key === " ") setTab(item.key); }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className={`flex flex-col items-center rounded-xl px-1 py-2 text-[11px] ${tab === item.key ? 'bg-electric/30 text-white' : 'text-slate-400'}`}
+            >
               {item.icon}
               {item.label}
-            </button>
+            </motion.div>
           ))}
         </div>
       </nav>

@@ -72,6 +72,12 @@ export default async function Home() {
       fastingWindowIntact={daily?.validations?.carb_limit ?? true}
       waistChangeCm={Math.max(0, (challenge?.current_streak ?? 0) * 0.2)}
       noCarbDinnerStreak={Math.floor((challenge?.current_streak ?? 0) / 2)}
+      dinnerLogged={daily?.dinner_logged ?? false}
+      dinnerCarbs={daily?.dinner_carbs ?? 0}
+      dinnerProtein={daily?.dinner_protein ?? 0}
+      dinnerMode={daily?.dinner_mode ?? null}
+      dinnerInsulinImpact={daily?.dinner_insulin_impact ?? 0}
+      eveningInsulinSpikeRisk={daily?.evening_insulin_spike_risk ?? false}
     />
   );
 }
