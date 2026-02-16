@@ -7,7 +7,16 @@ struct LoginRequest: Encodable {
 
 struct LoginResponse: Decodable {
     let accessToken: String
-    let userId: String
+    let refreshToken: String
+    let tokenType: String
+    let expiresInSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case tokenType = "token_type"
+        case expiresInSeconds = "expires_in_seconds"
+    }
 }
 
 struct DailySummary: Decodable {

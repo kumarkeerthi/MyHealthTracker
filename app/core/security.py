@@ -20,6 +20,11 @@ from app.core.config import settings
 
 SCRIPT_PATTERN = re.compile(r"<\s*script", flags=re.IGNORECASE)
 JS_URI_PATTERN = re.compile(r"javascript:\s*", flags=re.IGNORECASE)
+PROMPT_INJECTION_PATTERN = re.compile(
+    r"(ignore\s+all\s+previous\s+instructions|reveal\s+system\s+prompt|developer\s+message|jailbreak|do\s+anything\s+now)",
+    flags=re.IGNORECASE,
+)
+CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
 
 
 @dataclass
@@ -47,9 +52,10 @@ class SlidingWindowLimiter:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, default_rule: RateLimitRule):
+    def __init__(self, app, default_rule: RateLimitRule, route_rules: dict[str, RateLimitRule] | None = None):
         super().__init__(app)
         self.default_rule = default_rule
+        self.route_rules = route_rules or {}
         self.limiter = SlidingWindowLimiter()
 
     async def dispatch(self, request: Request, call_next):
@@ -57,8 +63,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
+        matching_rule = self.default_rule
+        for prefix, rule in self.route_rules.items():
+            if request.url.path.startswith(prefix):
+                matching_rule = rule
+                break
+
         key = f"{client_ip}:{request.url.path}"
-        if not self.limiter.is_allowed(key, self.default_rule):
+        if not self.limiter.is_allowed(key, matching_rule):
             return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Please retry later."})
         return await call_next(request)
 
@@ -74,6 +86,37 @@ class HTTPSRedirectEnforcementMiddleware(BaseHTTPMiddleware):
         proto = request.headers.get("x-forwarded-proto", request.url.scheme)
         if proto != "https":
             return JSONResponse(status_code=400, content={"detail": "HTTPS is required"})
+        return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; object-src 'none'"
+        return response
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in self.SAFE_METHODS:
+            return await call_next(request)
+
+        origin = request.headers.get("origin", "")
+        referer = request.headers.get("referer", "")
+        allowed_origin = settings.cors_allowed_origins.split(",")[0].strip()
+
+        if origin and origin != allowed_origin:
+            return JSONResponse(status_code=403, content={"detail": "CSRF origin check failed"})
+        if not origin and referer and not referer.startswith(allowed_origin):
+            return JSONResponse(status_code=403, content={"detail": "CSRF referer check failed"})
+
         return await call_next(request)
 
 
@@ -143,9 +186,14 @@ llm_usage_limiter = LLMUsageLimiter()
 
 
 def sanitize_text(value: str) -> str:
-    cleaned = SCRIPT_PATTERN.sub("", value)
+    cleaned = CONTROL_CHAR_PATTERN.sub("", value)
+    cleaned = SCRIPT_PATTERN.sub("", cleaned)
     cleaned = JS_URI_PATTERN.sub("", cleaned)
     return html.escape(cleaned.strip())
+
+
+def has_prompt_injection_risk(value: str) -> bool:
+    return bool(PROMPT_INJECTION_PATTERN.search(value or ""))
 
 
 def _sanitize_payload(payload: Any) -> Any:
