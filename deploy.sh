@@ -11,6 +11,7 @@ BACKUP_ROOT="${PROJECT_DIR}/deploy/backups"
 RUN_BACKUP_DIR="${BACKUP_ROOT}/$(date +%Y%m%d_%H%M%S)"
 ROLLBACK_NEEDED=1
 
+ensure_logs_dir
 exec > >(tee -a "$DEPLOY_LOG") 2>&1
 
 backup_current_state() {
