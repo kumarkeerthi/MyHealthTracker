@@ -21,6 +21,34 @@ class ChallengeTemplate:
 
 
 DAILY_TEMPLATES = {
+    "no_fruit_day": ChallengeTemplate(
+        code="no_fruit_day",
+        name="No Fruit Day",
+        description="Complete a day without fruit to tighten sugar load during reset.",
+        metric="fruit_servings",
+        target_value=0,
+    ),
+    "low_sugar_day": ChallengeTemplate(
+        code="low_sugar_day",
+        name="Low Sugar Day",
+        description="Keep total sugar load under 20g for metabolic control.",
+        metric="sugar_grams",
+        target_value=20,
+    ),
+    "fiber_boost_day": ChallengeTemplate(
+        code="fiber_boost_day",
+        name="Fiber Boost Day",
+        description="Hit at least 25g fiber for glucose smoothing.",
+        metric="fiber_grams",
+        target_value=25,
+    ),
+    "omega3_support_day": ChallengeTemplate(
+        code="omega3_support_day",
+        name="Omega-3 Support Day",
+        description="Add flaxseed or chia to support HDL and triglyceride lowering.",
+        metric="omega3_servings",
+        target_value=1,
+    ),
     "no_carb_dinner_day": ChallengeTemplate(
         code="no_carb_dinner_day",
         name="No Carb Dinner Day",

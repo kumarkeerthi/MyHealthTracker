@@ -154,6 +154,9 @@ class MetabolicAgentService:
         oil_average = self._avg_daily_oil(db, user_id, start_day, end_day)
         restaurant_frequency = self._restaurant_image_frequency(db, user_id, start_day, end_day)
         hdl_support_days = self._hdl_support_days(db, user_id, start_day, end_day)
+        hdl_recent = self._avg_vitals_metric(db, user_id, start_day, end_day, VitalsEntry.hdl)
+        hdl_previous = self._avg_vitals_metric(db, user_id, previous_start, previous_end, VitalsEntry.hdl)
+        hdl_improving = hdl_recent is not None and hdl_previous is not None and hdl_recent > hdl_previous
 
         weekly_recommendations: list[AgentRecommendation] = []
 
@@ -187,6 +190,21 @@ class MetabolicAgentService:
                 )
             )
 
+        if waist_not_reducing and fruit_frequency >= 6:
+            state.fruit_allowance_current = 0
+            state.fruit_allowance_weekly = 3
+            weekly_recommendations.append(
+                AgentRecommendation(
+                    recommendation_type="weekly_fruit_allowance_reduction",
+                    title="Reduce fruit allowance",
+                    summary="Waist trend is rising with near-daily fruit intake. Reduce fruit allowance to 3 servings/week.",
+                    confidence_level=0.86,
+                    data_used={"waist_recent_avg_cm": waist_recent, "waist_previous_avg_cm": waist_previous, "fruit_days": fruit_frequency},
+                    threshold_triggered="Waist increasing AND fruit logged daily.",
+                    historical_comparison=f"fruit_days={fruit_frequency}/7 with non-improving waist trend.",
+                )
+            )
+
         if hdl_support_days >= 4:
             weekly_recommendations.append(
                 AgentRecommendation(
@@ -197,6 +215,20 @@ class MetabolicAgentService:
                     data_used={"hdl_support_days": hdl_support_days},
                     threshold_triggered="HDL-support days (nuts + strength) high.",
                     historical_comparison=f"HDL-support days this week: {hdl_support_days}/7.",
+                )
+            )
+
+        if hdl_improving:
+            state.fruit_allowance_weekly = min(9, state.fruit_allowance_weekly + 2)
+            weekly_recommendations.append(
+                AgentRecommendation(
+                    recommendation_type="weekly_fruit_allowance_bonus",
+                    title="Add 2 fruit servings this week",
+                    summary="HDL is improving, so controlled fruit allowance is expanded by 2 servings/week.",
+                    confidence_level=0.74,
+                    data_used={"hdl_recent": hdl_recent, "hdl_previous": hdl_previous},
+                    threshold_triggered="HDL improving week-over-week.",
+                    historical_comparison=f"HDL moved from {hdl_previous} to {hdl_recent}.",
                 )
             )
 
@@ -462,7 +494,7 @@ class MetabolicAgentService:
                 DailyLog.user_id == user_id,
                 DailyLog.log_date >= start_day,
                 DailyLog.log_date <= end_day,
-                func.lower(FoodItem.name).like("%fruit%"),
+                FoodItem.food_group == "fruit",
             )
             .distinct()
         ).all()
@@ -520,7 +552,7 @@ class MetabolicAgentService:
                     DailyLog.user_id == user_id,
                     DailyLog.log_date >= start_day,
                     DailyLog.log_date <= end_day,
-                    func.lower(FoodItem.name).like("%nut%"),
+                    FoodItem.food_group == "nut",
                 )
                 .distinct()
             ).all()
@@ -637,6 +669,7 @@ class MetabolicAgentService:
             carb_ceiling_current=user.carb_ceiling,
             protein_target_current=user.protein_target_min,
             fruit_allowance_current=1,
+            fruit_allowance_weekly=7,
             notes="Initialized on first agent run.",
         )
         db.add(state)

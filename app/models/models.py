@@ -123,7 +123,14 @@ class FoodItem(Base):
     protein: Mapped[float] = mapped_column(Float, nullable=False)
     carbs: Mapped[float] = mapped_column(Float, nullable=False)
     fats: Mapped[float] = mapped_column(Float, nullable=False)
+    sugar: Mapped[float] = mapped_column(Float, default=0.0)
+    fiber: Mapped[float] = mapped_column(Float, default=0.0)
     glycemic_load: Mapped[float] = mapped_column(Float, nullable=False)
+    hdl_support_score: Mapped[float] = mapped_column(Float, default=0.0)
+    triglyceride_risk_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    food_group: Mapped[str] = mapped_column(String(30), default="general")
+    high_carb_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    nut_seed_exception: Mapped[bool] = mapped_column(Boolean, default=False)
     hidden_oil_estimate: Mapped[float] = mapped_column(Float, nullable=False)
 
     meal_entries: Mapped[list["MealEntry"]] = relationship(back_populates="food_item")
@@ -155,6 +162,10 @@ class DailyLog(Base):
     total_protein: Mapped[float] = mapped_column(Float, default=0.0)
     total_carbs: Mapped[float] = mapped_column(Float, default=0.0)
     total_fats: Mapped[float] = mapped_column(Float, default=0.0)
+    total_sugar: Mapped[float] = mapped_column(Float, default=0.0)
+    total_fiber: Mapped[float] = mapped_column(Float, default=0.0)
+    total_hdl_support: Mapped[float] = mapped_column(Float, default=0.0)
+    total_triglyceride_risk: Mapped[float] = mapped_column(Float, default=0.0)
     total_hidden_oil: Mapped[float] = mapped_column(Float, default=0.0)
 
     user: Mapped["User"] = relationship(back_populates="daily_logs")
@@ -286,6 +297,7 @@ class MetabolicAgentState(Base):
     carb_ceiling_current: Mapped[int] = mapped_column(Integer, default=90)
     protein_target_current: Mapped[int] = mapped_column(Integer, default=90)
     fruit_allowance_current: Mapped[int] = mapped_column(Integer, default=1)
+    fruit_allowance_weekly: Mapped[int] = mapped_column(Integer, default=7)
     metabolic_phase: Mapped[MetabolicPhase] = mapped_column(
         SqlEnum(MetabolicPhase, name="metabolic_phase_enum"),
         default=MetabolicPhase.RESET,

@@ -2,7 +2,15 @@ export type DailySummary = {
   total_protein: number;
   total_carbs: number;
   total_hidden_oil: number;
+  total_sugar: number;
+  total_fiber: number;
   insulin_load_score: number | null;
+  fruit_servings: number;
+  fruit_budget: number;
+  nuts_servings: number;
+  nuts_budget: number;
+  remaining_carb_budget: number;
+  warnings: string[];
   validations: {
     protein_minimum: boolean;
     carb_limit: boolean;
@@ -87,6 +95,10 @@ export type AdvancedAnalytics = {
   start_date: string;
   end_date: string;
   insulin_load_trend: TrendSeries;
+  fruit_frequency_trend: TrendSeries;
+  nut_frequency_trend: TrendSeries;
+  sugar_load_trend: TrendSeries;
+  hdl_support_trend: TrendSeries;
   waist_trend: TrendSeries;
   weight_trend: TrendSeries;
   protein_intake_consistency: TrendSeries;

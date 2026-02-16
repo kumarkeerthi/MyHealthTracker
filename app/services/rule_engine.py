@@ -10,12 +10,16 @@ from app.services.vitals_engine import calculate_vitals_risk_score
 
 
 def calculate_daily_macros(meal_entries: list[dict]) -> dict[str, float]:
-    totals = {"protein": 0.0, "carbs": 0.0, "fats": 0.0, "hidden_oil": 0.0}
+    totals = {"protein": 0.0, "carbs": 0.0, "fats": 0.0, "sugar": 0.0, "fiber": 0.0, "hdl_support": 0.0, "triglyceride_risk": 0.0, "hidden_oil": 0.0}
     for entry in meal_entries:
         servings = entry.get("servings", 1.0)
         totals["protein"] += entry["protein"] * servings
         totals["carbs"] += entry["carbs"] * servings
         totals["fats"] += entry["fats"] * servings
+        totals["sugar"] += entry.get("sugar", 0.0) * servings
+        totals["fiber"] += entry.get("fiber", 0.0) * servings
+        totals["hdl_support"] += entry.get("hdl_support_score", 0.0) * servings
+        totals["triglyceride_risk"] += entry.get("triglyceride_risk_weight", 0.0) * servings
         totals["hidden_oil"] += entry["hidden_oil_estimate"] * servings
     return {k: round(v, 2) for k, v in totals.items()}
 
@@ -94,6 +98,8 @@ def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicPr
         daily_log.total_hidden_oil,
         daily_log.total_protein,
         metabolic_bonus,
+        daily_log.total_sugar,
+        daily_log.total_hdl_support,
     )
 
     vitals_entries = db.scalars(

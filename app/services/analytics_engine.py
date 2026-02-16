@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import DailyLog, ExerciseEntry, InsulinScore, User, VitalsEntry
+from app.models import DailyLog, ExerciseEntry, FoodItem, InsulinScore, MealEntry, User, VitalsEntry
 from app.services.strength_engine import compute_strength_score
 
 
@@ -94,6 +94,10 @@ class AnalyticsEngine:
         hr_points: list[tuple[date, float]] = []
         strength_points: list[tuple[date, float]] = []
         grip_points: list[tuple[date, float]] = []
+        fruit_points: list[tuple[date, float]] = []
+        nut_points: list[tuple[date, float]] = []
+        sugar_points: list[tuple[date, float]] = []
+        hdl_support_points: list[tuple[date, float]] = []
 
         cursor = start_date
         while cursor <= end_date:
@@ -104,6 +108,8 @@ class AnalyticsEngine:
             protein = float(log.total_protein) if log else 0.0
             carbs = float(log.total_carbs) if log else 0.0
             oil = float(log.total_hidden_oil) if log else 0.0
+            sugar = float(getattr(log, "total_sugar", 0.0) or 0.0) if log else 0.0
+            hdl_support = float(getattr(log, "total_hdl_support", 0.0) or 0.0) if log else 0.0
             insulin = insulin_by_date.get(cursor, max(0.0, carbs + oil * 4 - protein * 0.25))
 
             protein_ok = protein >= user.protein_target_min
@@ -126,11 +132,28 @@ class AnalyticsEngine:
             protein_points.append((cursor, protein))
             carb_points.append((cursor, carbs))
             oil_points.append((cursor, oil))
+            sugar_points.append((cursor, sugar))
+            hdl_support_points.append((cursor, hdl_support))
             insulin_points.append((cursor, insulin))
             compliance_points.append((cursor, compliance))
             clean_streak_points.append((cursor, float(clean_streak)))
             strength_points.append((cursor, float(strength_score)))
             grip_points.append((cursor, float(avg_grip)))
+
+            fruit_servings = 0.0
+            nut_servings = 0.0
+            if log:
+                day_entries = db.scalars(
+                    select(MealEntry)
+                    .join(FoodItem, FoodItem.id == MealEntry.food_item_id)
+                    .where(MealEntry.daily_log_id == log.id)
+                ).all()
+                fruit_servings = sum(entry.servings for entry in day_entries if entry.food_item.food_group == "fruit")
+                nut_servings = sum(
+                    entry.servings for entry in day_entries if entry.food_item.food_group == "nut" and not entry.food_item.nut_seed_exception
+                )
+            fruit_points.append((cursor, float(fruit_servings)))
+            nut_points.append((cursor, float(nut_servings)))
 
             if vitals_entry and vitals_entry.weight_kg is not None:
                 weight_points.append((cursor, float(vitals_entry.weight_kg)))
@@ -164,6 +187,10 @@ class AnalyticsEngine:
             "start_date": start_date,
             "end_date": end_date,
             "insulin_load_trend": self._build_series("Insulin Load Trend", insulin_points, lower_is_better=True),
+            "fruit_frequency_trend": self._build_series("Fruit Frequency", fruit_points, lower_is_better=True),
+            "nut_frequency_trend": self._build_series("Nut Frequency", nut_points, lower_is_better=False),
+            "sugar_load_trend": self._build_series("Sugar Load Trend", sugar_points, lower_is_better=True),
+            "hdl_support_trend": self._build_series("HDL-support Trend", hdl_support_points, lower_is_better=False),
             "waist_trend": self._build_series("Waist Trend", with_fallback(waist_points), lower_is_better=True),
             "weight_trend": self._build_series("Weight Trend", with_fallback(weight_points), lower_is_better=True),
             "protein_intake_consistency": self._build_series("Protein Intake Consistency", protein_points, lower_is_better=False),

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
@@ -136,6 +136,11 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     if len(food_map) != len(set(food_ids)):
         raise HTTPException(status_code=404, detail="One or more food items not found")
 
+    if user.triglycerides > 300:
+        restricted_names = {"banana", "mango"}
+        if any(food_map[entry.food_item_id].name.lower() in restricted_names for entry in payload.entries):
+            raise HTTPException(status_code=400, detail="Banana and mango are blocked during reset for high triglycerides.")
+
     log_date = payload.consumed_at.date()
     daily_log = _get_or_create_daily_log(db, payload.user_id, log_date)
 
@@ -155,11 +160,26 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
         select(MealEntry).options(joinedload(MealEntry.food_item)).where(MealEntry.daily_log_id == daily_log.id)
     ).all()
 
+    todays_fruit_servings = sum(
+        entry.servings
+        for entry in meal_entries
+        if entry.food_item.food_group == "fruit"
+    )
+    todays_nut_servings = sum(
+        entry.servings
+        for entry in meal_entries
+        if entry.food_item.food_group == "nut" and not entry.food_item.nut_seed_exception
+    )
+
     macro_inputs = [
         {
             "protein": entry.food_item.protein,
             "carbs": entry.food_item.carbs,
             "fats": entry.food_item.fats,
+            "sugar": entry.food_item.sugar,
+            "fiber": entry.food_item.fiber,
+            "hdl_support_score": entry.food_item.hdl_support_score,
+            "triglyceride_risk_weight": entry.food_item.triglyceride_risk_weight,
             "hidden_oil_estimate": entry.food_item.hidden_oil_estimate,
             "servings": entry.servings,
         }
@@ -170,6 +190,10 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     daily_log.total_protein = totals["protein"]
     daily_log.total_carbs = totals["carbs"]
     daily_log.total_fats = totals["fats"]
+    daily_log.total_sugar = totals["sugar"]
+    daily_log.total_fiber = totals["fiber"]
+    daily_log.total_hdl_support = totals["hdl_support"]
+    daily_log.total_triglyceride_risk = totals["triglyceride_risk"]
     daily_log.total_hidden_oil = totals["hidden_oil"]
     db.flush()
 
@@ -179,6 +203,32 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
     alerts = notification_service.evaluate_daily_alerts(db, payload.user_id, daily_log, status["insulin_load_score"])
     db.commit()
+
+    fruit_budget_limit = 1
+    two_week_start = log_date - timedelta(days=13)
+    waist_entries = db.scalars(
+        select(VitalsEntry.waist_cm)
+        .where(
+            VitalsEntry.user_id == payload.user_id,
+            VitalsEntry.recorded_at >= datetime.combine(two_week_start, time.min),
+            VitalsEntry.recorded_at <= datetime.combine(log_date, time.max),
+            VitalsEntry.waist_cm.is_not(None),
+        )
+        .order_by(VitalsEntry.recorded_at.asc())
+    ).all()
+    if len(waist_entries) >= 2 and float(waist_entries[-1]) >= float(waist_entries[0]):
+        fruit_budget_limit = 3 / 7
+
+    suggestions: list[str] = []
+    warnings: list[str] = []
+    if any(entry.food_item.food_group == "fruit" for entry in meal_entries):
+        suggestions.append("Pair fruit with protein.")
+    if any(entry.food_item.food_group == "nut" for entry in meal_entries):
+        suggestions.append("Healthy fat – supports HDL.")
+    if any(entry.food_item.name.lower() == "banana" for entry in meal_entries):
+        warnings.append("High insulin fruit for current triglyceride level.")
+    if daily_log.total_carbs >= profile.carb_ceiling and any(entry.food_item.name.lower() == "mango" for entry in meal_entries):
+        warnings.append("High triglyceride risk.")
 
     validations = {
         "carb_limit": validate_carb_limit(totals["carbs"], profile.carb_ceiling),
@@ -194,6 +244,15 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
         total_fats=totals["fats"],
         total_hidden_oil=totals["hidden_oil"],
         insulin_load_score=status["insulin_load_score"],
+        total_sugar=totals["sugar"],
+        total_fiber=totals["fiber"],
+        fruit_servings=todays_fruit_servings,
+        fruit_budget=fruit_budget_limit,
+        nuts_servings=todays_nut_servings,
+        nuts_budget=1.0,
+        remaining_carb_budget=max(0.0, round(profile.carb_ceiling - totals["carbs"], 2)),
+        suggestions=suggestions,
+        warnings=warnings,
         validations=validations,
     )
 
@@ -224,13 +283,28 @@ def daily_summary(
         "protein_minimum": validate_protein_minimum(daily_log.total_protein, profile.protein_target_min),
     }
 
+    meal_entries = db.scalars(select(MealEntry).options(joinedload(MealEntry.food_item)).where(MealEntry.daily_log_id == daily_log.id)).all()
+    fruit_servings = sum(entry.servings for entry in meal_entries if entry.food_item.food_group == "fruit")
+    nuts_servings = sum(entry.servings for entry in meal_entries if entry.food_item.food_group == "nut" and not entry.food_item.nut_seed_exception)
+    warnings = []
+    if any(entry.food_item.name.lower() == "banana" for entry in meal_entries):
+        warnings.append("High insulin fruit for current triglyceride level.")
+
     return DailySummaryResponse(
         date=target_date,
         total_protein=daily_log.total_protein,
         total_carbs=daily_log.total_carbs,
         total_fats=daily_log.total_fats,
+        total_sugar=daily_log.total_sugar,
+        total_fiber=daily_log.total_fiber,
         total_hidden_oil=daily_log.total_hidden_oil,
         insulin_load_score=latest_score,
+        fruit_servings=fruit_servings,
+        fruit_budget=1.0,
+        nuts_servings=nuts_servings,
+        nuts_budget=1.0,
+        remaining_carb_budget=max(0.0, round(profile.carb_ceiling - daily_log.total_carbs, 2)),
+        warnings=warnings,
         validations=validations,
     )
 
