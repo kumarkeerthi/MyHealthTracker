@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 
 from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -11,6 +11,12 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     age: Mapped[int] = mapped_column(Integer, nullable=False)
     sex: Mapped[str] = mapped_column(String(20), nullable=False)
     triglycerides: Mapped[float] = mapped_column(Float, nullable=False)
@@ -40,6 +46,9 @@ class User(Base):
     habit_checkins: Mapped[list["HabitCheckin"]] = relationship(back_populates="user")
     metabolic_agent_state: Mapped["MetabolicAgentState"] = relationship(back_populates="user", uselist=False)
     pending_recommendations: Mapped[list["PendingRecommendation"]] = relationship(back_populates="user")
+    auth_refresh_tokens: Mapped[list["AuthRefreshToken"]] = relationship(back_populates="user")
+    auth_login_attempts: Mapped[list["AuthLoginAttempt"]] = relationship(back_populates="user")
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -78,6 +87,47 @@ class MetabolicPhase(str, Enum):
     RECOMPOSITION = "RECOMPOSITION"
     PERFORMANCE = "PERFORMANCE"
     MAINTENANCE = "MAINTENANCE"
+
+
+class AuthRefreshToken(Base):
+    __tablename__ = "auth_refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    replaced_by_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="auth_refresh_tokens")
+
+
+class AuthLoginAttempt(Base):
+    __tablename__ = "auth_login_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped["User | None"] = relationship(back_populates="auth_login_attempts")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
 
 
 class MetabolicProfile(Base):

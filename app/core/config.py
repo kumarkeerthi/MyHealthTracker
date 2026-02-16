@@ -21,8 +21,14 @@ class Settings(BaseSettings):
     llm_requests_per_hour: int = 40
     jwt_secret: str = "CHANGE_ME"
     jwt_algorithm: str = "HS256"
-    jwt_expiration_minutes: int = 60
+    jwt_expiration_minutes: int = 15
+    refresh_token_expiration_days: int = 7
+    require_https: bool = True
+    auth_bcrypt_rounds: int = 12
+    login_rate_limit_attempts: int = 10
+    login_rate_limit_window_seconds: int = 60
     admin_user_ids: str = "1"
+    password_reset_token_ttl_minutes: int = 30
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@metabolicos.app"

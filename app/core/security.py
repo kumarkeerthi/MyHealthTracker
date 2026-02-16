@@ -1,6 +1,8 @@
+import hashlib
 import html
 import json
 import re
+import secrets
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
 
+import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -57,6 +60,44 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = f"{client_ip}:{request.url.path}"
         if not self.limiter.is_allowed(key, self.default_rule):
             return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Please retry later."})
+        return await call_next(request)
+
+
+class HTTPSRedirectEnforcementMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not settings.require_https:
+            return await call_next(request)
+
+        if request.url.path in {"/health", "/metrics"}:
+            return await call_next(request)
+
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        if proto != "https":
+            return JSONResponse(status_code=400, content={"detail": "HTTPS is required"})
+        return await call_next(request)
+
+
+class AuthRequiredMiddleware(BaseHTTPMiddleware):
+    PUBLIC_PATHS = {"/health", "/metrics", "/auth/login", "/auth/refresh", "/auth/password-reset/request", "/auth/password-reset/confirm"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS" or request.url.path in self.PUBLIC_PATHS:
+            return await call_next(request)
+
+        authorization = request.headers.get("Authorization", "")
+        if not authorization.startswith("Bearer "):
+            return JSONResponse(status_code=401, content={"detail": "Bearer token required"})
+
+        token = authorization.replace("Bearer ", "", 1).strip()
+        try:
+            claims = decode_token(token)
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+        if claims.get("type") != "access":
+            return JSONResponse(status_code=401, content={"detail": "Access token required"})
+
+        request.state.token_claims = claims
         return await call_next(request)
 
 
@@ -117,16 +158,52 @@ def _sanitize_payload(payload: Any) -> Any:
     return payload
 
 
-def create_access_token(user_id: int, is_admin: bool) -> str:
-    expires_delta = timedelta(minutes=settings.jwt_expiration_minutes)
-    expires_at = datetime.now(timezone.utc) + expires_delta
-    claims = {
+def hash_password(plain_password: str) -> str:
+    rounds = max(4, settings.auth_bcrypt_rounds)
+    return bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt(rounds=rounds)).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+def _build_claims(*, user_id: int, role: str, token_type: str, expires_delta: timedelta) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    return {
         "sub": str(user_id),
-        "is_admin": is_admin,
-        "exp": expires_at,
-        "iat": datetime.now(timezone.utc),
+        "role": role,
+        "type": token_type,
+        "jti": secrets.token_urlsafe(16),
+        "exp": now + expires_delta,
+        "iat": now,
     }
+
+
+def create_access_token(user_id: int, role: str) -> str:
+    claims = _build_claims(
+        user_id=user_id,
+        role=role,
+        token_type="access",
+        expires_delta=timedelta(minutes=settings.jwt_expiration_minutes),
+    )
     return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def create_refresh_token(user_id: int, role: str) -> str:
+    claims = _build_claims(
+        user_id=user_id,
+        role=role,
+        token_type="refresh",
+        expires_delta=timedelta(days=settings.refresh_token_expiration_days),
+    )
+    return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def decode_token(token: str) -> dict[str, Any]:
@@ -140,10 +217,13 @@ def get_current_token_claims(authorization: str = Header(default="")) -> dict[st
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")
     token = authorization.replace("Bearer ", "", 1).strip()
-    return decode_token(token)
+    claims = decode_token(token)
+    if claims.get("type") != "access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Access token required")
+    return claims
 
 
 def require_admin(claims: dict[str, Any] = Depends(get_current_token_claims)) -> dict[str, Any]:
-    if not claims.get("is_admin"):
+    if claims.get("role") != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return claims

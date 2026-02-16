@@ -594,3 +594,28 @@ class HabitIntelligenceResponse(BaseModel):
     heatmap: list[HabitHeatmapCellResponse]
     insights: list[str]
     overall_success_rate: float
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)

@@ -7,7 +7,13 @@ from app.routers import router
 from app.core.config import settings
 from app.core.logging_config import configure_logging
 from app.core.monitoring import MetricsMiddleware, metrics_response
-from app.core.security import InputSanitizationMiddleware, RateLimitMiddleware, RateLimitRule
+from app.core.security import (
+    AuthRequiredMiddleware,
+    HTTPSRedirectEnforcementMiddleware,
+    InputSanitizationMiddleware,
+    RateLimitMiddleware,
+    RateLimitRule,
+)
 from app.data.seed_data import seed_initial_data
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
@@ -26,7 +32,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+app.add_middleware(HTTPSRedirectEnforcementMiddleware)
 app.add_middleware(InputSanitizationMiddleware)
+app.add_middleware(AuthRequiredMiddleware)
 app.add_middleware(
     RateLimitMiddleware,
     default_rule=RateLimitRule(limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window_seconds),
