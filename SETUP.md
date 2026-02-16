@@ -25,6 +25,39 @@ What this does automatically:
 3. Starts the full stack: `db`, `api`, `frontend`.
 4. Waits for API health check (`/health`).
 
+### `.env` values you should override
+
+`./setup.sh` creates `.env` only if it does not already exist. Before sharing your environment or deploying, review and override these values:
+
+- `POSTGRES_PASSWORD` and `DATABASE_URL`
+  - Keep the same password in both fields.
+  - Example:
+    - `POSTGRES_PASSWORD=my_local_db_password_123`
+    - `DATABASE_URL=postgresql+psycopg2://metabolic:my_local_db_password_123@db:5432/metabolic`
+- `JWT_SECRET` and `HEALTH_SYNC_SIGNING_SECRET`
+  - Replace dev secrets with long random strings.
+  - Example:
+    - `JWT_SECRET=7f4f4f8f3e0b4cf997f62f4d6bd0e36ca8f64c4a2e73d8d4f9b9ddf5e8d54111`
+    - `HEALTH_SYNC_SIGNING_SECRET=b7aa2e4fcb0f4f2ea0b90a8f111fa4b7dcb15dbf265f4637ab534077388cc4e9`
+- `OPENAI_API_KEY`
+  - Set if you want AI-powered features.
+  - Example: `OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx`
+- `CORS_ALLOWED_ORIGINS` and `NEXT_PUBLIC_API_BASE_URL`
+  - Match the frontend URL(s) and API URL for your environment.
+  - Example (local):
+    - `CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+    - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
+
+For production, start from `.env.example` and override **all** placeholder values such as:
+
+- `APP_DOMAIN` / `DOMAIN` (example: `health.example.com`)
+- `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, and all corresponding URLs
+- `JWT_SECRET` (64+ random characters)
+- `OPENAI_API_KEY`
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`
+- `FOOD_IMAGE_PUBLIC_BASE_URL` (example: `https://health.example.com/uploads`)
+
 After it finishes:
 
 - Frontend: http://localhost:3000
