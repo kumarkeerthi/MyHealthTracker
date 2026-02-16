@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import router
+from app.routers import router
 from app.core.config import settings
 from app.data.seed_data import seed_initial_data
 from app.db.base import Base

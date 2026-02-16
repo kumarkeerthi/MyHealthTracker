@@ -1,6 +1,7 @@
 from datetime import date, datetime
+from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -32,6 +33,36 @@ class User(Base):
     daily_logs: Mapped[list["DailyLog"]] = relationship(back_populates="user")
     vitals_entries: Mapped[list["VitalsEntry"]] = relationship(back_populates="user")
     exercise_entries: Mapped[list["ExerciseEntry"]] = relationship(back_populates="user")
+    metabolic_profile: Mapped["MetabolicProfile"] = relationship(back_populates="user", uselist=False)
+
+
+class ExerciseCategory(str, Enum):
+    WALK = "WALK"
+    BODYWEIGHT = "BODYWEIGHT"
+    MONKEY_BAR = "MONKEY_BAR"
+    STRENGTH = "STRENGTH"
+
+
+class MetabolicProfile(Base):
+    __tablename__ = "metabolic_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    protein_target_min: Mapped[int] = mapped_column(Integer, default=90)
+    protein_target_max: Mapped[int] = mapped_column(Integer, default=110)
+    carb_ceiling: Mapped[int] = mapped_column(Integer, default=90)
+    oil_limit_tsp: Mapped[float] = mapped_column(Float, default=3.0)
+    fasting_start_time: Mapped[str] = mapped_column(String(5), default="14:00")
+    fasting_end_time: Mapped[str] = mapped_column(String(5), default="08:00")
+    max_chapati_per_day: Mapped[int] = mapped_column(Integer, default=2)
+    allow_rice: Mapped[bool] = mapped_column(Boolean, default=False)
+    chocolate_limit_per_day: Mapped[int] = mapped_column(Integer, default=2)
+    insulin_score_green_threshold: Mapped[float] = mapped_column(Float, default=40)
+    insulin_score_yellow_threshold: Mapped[float] = mapped_column(Float, default=70)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="metabolic_profile")
 
 
 class FoodItem(Base):
@@ -89,6 +120,12 @@ class VitalsEntry(Base):
     hba1c: Mapped[float] = mapped_column(Float)
     triglycerides: Mapped[float] = mapped_column(Float)
     hdl: Mapped[float] = mapped_column(Float)
+    resting_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sleep_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    waist_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hrv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    steps_total: Mapped[int] = mapped_column(Integer, default=0)
+    body_fat_percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="vitals_entries")
 
@@ -100,8 +137,18 @@ class ExerciseEntry(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     daily_log_id: Mapped[int | None] = mapped_column(ForeignKey("daily_logs.id"), nullable=True)
     activity_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    exercise_category: Mapped[ExerciseCategory] = mapped_column(
+        SqlEnum(ExerciseCategory, name="exercise_category_enum"),
+        default=ExerciseCategory.STRENGTH,
+    )
+    movement_type: Mapped[str] = mapped_column(String(120), default="general")
+    reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sets: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     calories_burned_estimate: Mapped[float] = mapped_column(Float, default=0.0)
+    perceived_intensity: Mapped[int] = mapped_column(Integer, default=5)
+    step_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    calories_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     post_meal_walk: Mapped[bool] = mapped_column(Boolean, default=False)
     performed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

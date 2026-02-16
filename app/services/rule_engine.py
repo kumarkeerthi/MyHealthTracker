@@ -1,5 +1,13 @@
 from datetime import datetime, time
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import DailyLog, MetabolicProfile, User, VitalsEntry
+from app.services.exercise_engine import calculate_post_meal_walk_bonus
+from app.services.insulin_engine import calculate_insulin_load_score, classify_insulin_score
+from app.services.vitals_engine import calculate_vitals_risk_score
+
 
 def calculate_daily_macros(meal_entries: list[dict]) -> dict[str, float]:
     totals = {"protein": 0.0, "carbs": 0.0, "fats": 0.0, "hidden_oil": 0.0}
@@ -12,35 +20,80 @@ def calculate_daily_macros(meal_entries: list[dict]) -> dict[str, float]:
     return {k: round(v, 2) for k, v in totals.items()}
 
 
-def calculate_insulin_load_score(
-    total_carbs: float,
-    hidden_oil_estimate: float,
-    protein_grams: float,
-    post_meal_walk_bonus: float,
-) -> tuple[float, float]:
-    raw_score = (
-        (total_carbs * 1.0)
-        + (hidden_oil_estimate * 0.5)
-        - (protein_grams * 0.3)
-        - (post_meal_walk_bonus * 10)
+def get_or_create_metabolic_profile(db: Session, user: User) -> MetabolicProfile:
+    profile = db.scalar(select(MetabolicProfile).where(MetabolicProfile.user_id == user.id))
+    if profile:
+        return profile
+
+    profile = MetabolicProfile(
+        user_id=user.id,
+        protein_target_min=90,
+        protein_target_max=110,
+        carb_ceiling=90,
+        oil_limit_tsp=3,
+        fasting_start_time="14:00",
+        fasting_end_time="08:00",
+        max_chapati_per_day=2,
+        allow_rice=False,
+        chocolate_limit_per_day=2,
+        insulin_score_green_threshold=40,
+        insulin_score_yellow_threshold=70,
     )
-    normalized = max(0.0, min(100.0, round(raw_score, 2)))
-    return normalized, round(raw_score, 2)
+    db.add(profile)
+    db.flush()
+    return profile
 
 
-def validate_fasting_window(consumed_at: datetime, start: str = "08:00", end: str = "14:00") -> bool:
-    start_time = time.fromisoformat(start)
-    end_time = time.fromisoformat(end)
-    return start_time <= consumed_at.time() <= end_time
+def validate_fasting_window(consumed_at: datetime, fasting_start_time: str, fasting_end_time: str) -> bool:
+    fasting_start = time.fromisoformat(fasting_start_time)
+    fasting_end = time.fromisoformat(fasting_end_time)
+    consumed_time = consumed_at.time()
+
+    if fasting_start <= fasting_end:
+        in_fasting_window = fasting_start <= consumed_time <= fasting_end
+    else:
+        in_fasting_window = consumed_time >= fasting_start or consumed_time <= fasting_end
+
+    return not in_fasting_window
 
 
-def validate_carb_limit(total_carbs: float, carb_ceiling: float = 90.0) -> bool:
+def validate_carb_limit(total_carbs: float, carb_ceiling: float) -> bool:
     return total_carbs <= carb_ceiling
 
 
-def validate_oil_limit(total_hidden_oil: float, oil_limit_tsp: float = 3.0) -> bool:
+def validate_oil_limit(total_hidden_oil: float, oil_limit_tsp: float) -> bool:
     return total_hidden_oil <= oil_limit_tsp
 
 
-def validate_protein_minimum(total_protein: float, protein_min: float = 90.0) -> bool:
+def validate_protein_minimum(total_protein: float, protein_min: float) -> bool:
     return total_protein >= protein_min
+
+
+def evaluate_daily_status(db: Session, daily_log: DailyLog, profile: MetabolicProfile) -> dict:
+    walks = list(daily_log.user.exercise_entries)
+    walk_bonus = calculate_post_meal_walk_bonus([entry for entry in walks if entry.daily_log_id == daily_log.id])
+
+    insulin_score, raw_score = calculate_insulin_load_score(
+        daily_log.total_carbs,
+        daily_log.total_hidden_oil,
+        daily_log.total_protein,
+        walk_bonus,
+    )
+
+    vitals_entries = db.scalars(
+        select(VitalsEntry)
+        .where(VitalsEntry.user_id == daily_log.user_id)
+        .order_by(VitalsEntry.recorded_at.asc())
+    ).all()
+    vitals_risk = calculate_vitals_risk_score(vitals_entries)
+
+    return {
+        "insulin_load_score": insulin_score,
+        "insulin_load_raw_score": raw_score,
+        "insulin_status": classify_insulin_score(insulin_score, profile),
+        "protein_compliance": validate_protein_minimum(daily_log.total_protein, profile.protein_target_min),
+        "carb_compliance": validate_carb_limit(daily_log.total_carbs, profile.carb_ceiling),
+        "oil_compliance": validate_oil_limit(daily_log.total_hidden_oil, profile.oil_limit_tsp),
+        "fasting_compliance": True,
+        "vitals_risk_flag": vitals_risk["flag"],
+    }

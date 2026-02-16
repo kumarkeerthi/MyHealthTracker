@@ -5,23 +5,32 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.models import DailyLog, ExerciseEntry, FoodItem, InsulinScore, MealEntry, User, VitalsEntry
+from app.models import DailyLog, ExerciseCategory, ExerciseEntry, FoodItem, InsulinScore, MealEntry, User, VitalsEntry
 from app.schemas.schemas import (
+    AppleHealthImportRequest,
     DailySummaryResponse,
+    ExerciseSummaryResponse,
     LogExerciseRequest,
     LogFoodRequest,
     LogFoodResponse,
     LogVitalsRequest,
+    ProfileResponse,
+    UpdateProfileRequest,
+    VitalsSummaryResponse,
     WeeklySummaryResponse,
 )
+from app.services.apple_health_service import AppleHealthService
+from app.services.exercise_engine import is_supported_movement
 from app.services.rule_engine import (
     calculate_daily_macros,
-    calculate_insulin_load_score,
+    evaluate_daily_status,
+    get_or_create_metabolic_profile,
     validate_carb_limit,
     validate_fasting_window,
     validate_oil_limit,
     validate_protein_minimum,
 )
+from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
 
@@ -42,9 +51,10 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    profile = get_or_create_metabolic_profile(db, user)
 
-    if not validate_fasting_window(payload.consumed_at, user.eating_window_start, user.eating_window_end):
-        raise HTTPException(status_code=400, detail="Meal is outside configured eating window")
+    if not validate_fasting_window(payload.consumed_at, profile.fasting_start_time, profile.fasting_end_time):
+        raise HTTPException(status_code=400, detail="Meal is inside configured fasting window")
 
     food_ids = [entry.food_item_id for entry in payload.entries]
     foods = db.scalars(select(FoodItem).where(FoodItem.id.in_(food_ids))).all()
@@ -83,27 +93,22 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     ]
     totals = calculate_daily_macros(macro_inputs)
 
-    post_meal_walk_count = db.scalar(
-        select(func.count(ExerciseEntry.id)).where(
-            ExerciseEntry.daily_log_id == daily_log.id, ExerciseEntry.post_meal_walk.is_(True)
-        )
-    )
-    score, raw_score = calculate_insulin_load_score(
-        totals["carbs"], totals["hidden_oil"], totals["protein"], float(post_meal_walk_count or 0)
-    )
-
     daily_log.total_protein = totals["protein"]
     daily_log.total_carbs = totals["carbs"]
     daily_log.total_fats = totals["fats"]
     daily_log.total_hidden_oil = totals["hidden_oil"]
+    db.flush()
 
-    db.add(InsulinScore(daily_log_id=daily_log.id, score=score, raw_score=raw_score))
+    daily_log = db.scalar(select(DailyLog).options(joinedload(DailyLog.user)).where(DailyLog.id == daily_log.id))
+    status = evaluate_daily_status(db, daily_log, profile)
+
+    db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
     db.commit()
 
     validations = {
-        "carb_limit": validate_carb_limit(totals["carbs"], user.carb_ceiling),
-        "oil_limit": validate_oil_limit(totals["hidden_oil"], user.oil_limit_tsp),
-        "protein_minimum": validate_protein_minimum(totals["protein"], user.protein_target_min),
+        "carb_limit": validate_carb_limit(totals["carbs"], profile.carb_ceiling),
+        "oil_limit": validate_oil_limit(totals["hidden_oil"], profile.oil_limit_tsp),
+        "protein_minimum": validate_protein_minimum(totals["protein"], profile.protein_target_min),
     }
 
     return LogFoodResponse(
@@ -113,7 +118,7 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
         total_carbs=totals["carbs"],
         total_fats=totals["fats"],
         total_hidden_oil=totals["hidden_oil"],
-        insulin_load_score=score,
+        insulin_load_score=status["insulin_load_score"],
         validations=validations,
     )
 
@@ -130,6 +135,7 @@ def daily_summary(
         raise HTTPException(status_code=404, detail="No daily log found")
 
     user = db.get(User, user_id)
+    profile = get_or_create_metabolic_profile(db, user)
     latest_score = db.scalar(
         select(InsulinScore.score)
         .where(InsulinScore.daily_log_id == daily_log.id)
@@ -138,9 +144,9 @@ def daily_summary(
     )
 
     validations = {
-        "carb_limit": validate_carb_limit(daily_log.total_carbs, user.carb_ceiling),
-        "oil_limit": validate_oil_limit(daily_log.total_hidden_oil, user.oil_limit_tsp),
-        "protein_minimum": validate_protein_minimum(daily_log.total_protein, user.protein_target_min),
+        "carb_limit": validate_carb_limit(daily_log.total_carbs, profile.carb_ceiling),
+        "oil_limit": validate_oil_limit(daily_log.total_hidden_oil, profile.oil_limit_tsp),
+        "protein_minimum": validate_protein_minimum(daily_log.total_protein, profile.protein_target_min),
     }
 
     return DailySummaryResponse(
@@ -167,6 +173,12 @@ def log_vitals(payload: LogVitalsRequest, db: Session = Depends(get_db)):
         hba1c=payload.hba1c,
         triglycerides=payload.triglycerides,
         hdl=payload.hdl,
+        resting_hr=payload.resting_hr,
+        sleep_hours=payload.sleep_hours,
+        waist_cm=payload.waist_cm,
+        hrv=payload.hrv,
+        steps_total=payload.steps_total,
+        body_fat_percentage=payload.body_fat_percentage,
     )
     db.add(vitals)
     db.commit()
@@ -178,19 +190,31 @@ def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
     if not db.get(User, payload.user_id):
         raise HTTPException(status_code=404, detail="User not found")
 
+    if not is_supported_movement(payload.exercise_category, payload.movement_type):
+        raise HTTPException(status_code=400, detail="Unsupported movement_type for category")
+
     daily_log = _get_or_create_daily_log(
         db,
         payload.user_id,
         (payload.performed_at or datetime.utcnow()).date(),
     )
 
+    should_apply_walk_bonus = payload.exercise_category == ExerciseCategory.WALK and payload.duration_minutes >= 15
+
     entry = ExerciseEntry(
         user_id=payload.user_id,
         daily_log_id=daily_log.id,
         activity_type=payload.activity_type,
+        exercise_category=payload.exercise_category,
+        movement_type=payload.movement_type,
+        reps=payload.reps,
+        sets=payload.sets,
         duration_minutes=payload.duration_minutes,
+        perceived_intensity=payload.perceived_intensity,
+        step_count=payload.step_count,
+        calories_estimate=payload.calories_estimate,
         calories_burned_estimate=payload.calories_burned_estimate,
-        post_meal_walk=payload.post_meal_walk,
+        post_meal_walk=payload.post_meal_walk or should_apply_walk_bonus,
         performed_at=payload.performed_at or datetime.utcnow(),
     )
     db.add(entry)
@@ -222,9 +246,7 @@ def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
         )
 
     daily_ids = [log.id for log in logs]
-    score_rows = db.scalars(
-        select(InsulinScore.score).where(InsulinScore.daily_log_id.in_(daily_ids))
-    ).all()
+    score_rows = db.scalars(select(InsulinScore.score).where(InsulinScore.daily_log_id.in_(daily_ids))).all()
 
     days = len(logs)
     return WeeklySummaryResponse(
@@ -235,3 +257,105 @@ def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
         avg_hidden_oil=round(sum(log.total_hidden_oil for log in logs) / days, 2),
         avg_insulin_load_score=round(sum(score_rows) / len(score_rows), 2) if score_rows else 0,
     )
+
+
+@router.get("/profile", response_model=ProfileResponse)
+def get_profile(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    profile = get_or_create_metabolic_profile(db, user)
+    db.commit()
+    return ProfileResponse(
+        user_id=user.id,
+        protein_target_min=profile.protein_target_min,
+        protein_target_max=profile.protein_target_max,
+        carb_ceiling=profile.carb_ceiling,
+        oil_limit_tsp=profile.oil_limit_tsp,
+        fasting_start_time=profile.fasting_start_time,
+        fasting_end_time=profile.fasting_end_time,
+        max_chapati_per_day=profile.max_chapati_per_day,
+        allow_rice=profile.allow_rice,
+        chocolate_limit_per_day=profile.chocolate_limit_per_day,
+        insulin_score_green_threshold=profile.insulin_score_green_threshold,
+        insulin_score_yellow_threshold=profile.insulin_score_yellow_threshold,
+    )
+
+
+@router.put("/profile", response_model=ProfileResponse)
+def put_profile(payload: UpdateProfileRequest, user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    profile = get_or_create_metabolic_profile(db, user)
+
+    updates = payload.model_dump(exclude_none=True)
+    for key, value in updates.items():
+        setattr(profile, key, value)
+
+    db.commit()
+    db.refresh(profile)
+    return ProfileResponse(
+        user_id=user.id,
+        protein_target_min=profile.protein_target_min,
+        protein_target_max=profile.protein_target_max,
+        carb_ceiling=profile.carb_ceiling,
+        oil_limit_tsp=profile.oil_limit_tsp,
+        fasting_start_time=profile.fasting_start_time,
+        fasting_end_time=profile.fasting_end_time,
+        max_chapati_per_day=profile.max_chapati_per_day,
+        allow_rice=profile.allow_rice,
+        chocolate_limit_per_day=profile.chocolate_limit_per_day,
+        insulin_score_green_threshold=profile.insulin_score_green_threshold,
+        insulin_score_yellow_threshold=profile.insulin_score_yellow_threshold,
+    )
+
+
+@router.get("/exercise-summary", response_model=ExerciseSummaryResponse)
+def exercise_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    total_sessions = db.scalar(select(func.count(ExerciseEntry.id)).where(ExerciseEntry.user_id == user_id)) or 0
+    total_duration = db.scalar(select(func.coalesce(func.sum(ExerciseEntry.duration_minutes), 0)).where(ExerciseEntry.user_id == user_id)) or 0
+    total_steps = db.scalar(select(func.coalesce(func.sum(ExerciseEntry.step_count), 0)).where(ExerciseEntry.user_id == user_id)) or 0
+
+    return ExerciseSummaryResponse(
+        user_id=user_id,
+        total_sessions=total_sessions,
+        total_duration_minutes=total_duration,
+        total_steps=total_steps,
+    )
+
+
+@router.get("/vitals-summary", response_model=VitalsSummaryResponse)
+def vitals_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    vitals_entries = db.scalars(
+        select(VitalsEntry).where(VitalsEntry.user_id == user_id).order_by(VitalsEntry.recorded_at.asc())
+    ).all()
+    if not vitals_entries:
+        raise HTTPException(status_code=404, detail="No vitals data found")
+
+    latest = vitals_entries[-1]
+    risk = calculate_vitals_risk_score(vitals_entries)
+
+    return VitalsSummaryResponse(
+        user_id=user_id,
+        latest_steps_total=latest.steps_total,
+        latest_resting_hr=latest.resting_hr,
+        latest_sleep_hours=latest.sleep_hours,
+        risk_flag=risk["flag"],
+    )
+
+
+@router.post("/import-apple-health")
+def import_apple_health(payload: AppleHealthImportRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    service = AppleHealthService(db)
+    result = service.ingest(user, payload.model_dump())
+    return {"status": "ok", **result}
+
+
+@router.post("/external-event")
+def external_event(payload: dict):
+    return {"status": "accepted", "message": "External event placeholder", "payload": payload}

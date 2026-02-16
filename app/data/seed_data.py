@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FoodItem, User
+from app.models import FoodItem, MetabolicProfile, User
 
 
 FOOD_ITEMS = [
@@ -49,10 +49,31 @@ DEFAULT_USER = {
 }
 
 
+DEFAULT_METABOLIC_PROFILE = {
+    "protein_target_min": 90,
+    "protein_target_max": 110,
+    "carb_ceiling": 90,
+    "oil_limit_tsp": 3,
+    "fasting_start_time": "14:00",
+    "fasting_end_time": "08:00",
+    "max_chapati_per_day": 2,
+    "allow_rice": False,
+    "chocolate_limit_per_day": 2,
+    "insulin_score_green_threshold": 40,
+    "insulin_score_yellow_threshold": 70,
+}
+
+
 def seed_initial_data(db: Session) -> None:
-    user_exists = db.scalar(select(User.id).limit(1))
-    if not user_exists:
-        db.add(User(**DEFAULT_USER))
+    user = db.scalar(select(User).limit(1))
+    if not user:
+        user = User(**DEFAULT_USER)
+        db.add(user)
+        db.flush()
+
+    profile_exists = db.scalar(select(MetabolicProfile.id).where(MetabolicProfile.user_id == user.id))
+    if not profile_exists:
+        db.add(MetabolicProfile(user_id=user.id, **DEFAULT_METABOLIC_PROFILE))
 
     existing_food_names = set(db.scalars(select(FoodItem.name)).all())
     for food in FOOD_ITEMS:
