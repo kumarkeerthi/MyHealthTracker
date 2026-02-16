@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FoodItem, MetabolicProfile, NotificationSettings, Recipe, User
+from app.models import FoodItem, HabitChallengeType, HabitCheckin, HabitDefinition, MetabolicProfile, NotificationSettings, Recipe, User
 
 
 FOOD_ITEMS = [
@@ -91,6 +91,45 @@ RECIPES = [
 ]
 
 
+HABIT_DEFINITIONS = [
+    {
+        "code": "no_carb_dinner",
+        "name": "No carb dinner",
+        "description": "Keep dinner carb-light to protect overnight glucose stability.",
+        "challenge_type": HabitChallengeType.STRICT,
+    },
+    {
+        "code": "protein_first",
+        "name": "Protein first",
+        "description": "Start meals with a protein source before carbs.",
+        "challenge_type": HabitChallengeType.STRICT,
+    },
+    {
+        "code": "post_meal_walk",
+        "name": "Post-meal walk",
+        "description": "Walk for at least 10 minutes after a main meal.",
+        "challenge_type": HabitChallengeType.MICRO,
+    },
+    {
+        "code": "strength_training",
+        "name": "Strength training",
+        "description": "Complete at least one structured strength session.",
+        "challenge_type": HabitChallengeType.STRICT,
+    },
+    {
+        "code": "oil_under_limit",
+        "name": "Oil under limit",
+        "description": "Keep visible + hidden oil under your daily cap.",
+        "challenge_type": HabitChallengeType.STRICT,
+    },
+    {
+        "code": "sleep_over_7h",
+        "name": "Sleep > 7 hours",
+        "description": "Sleep 7+ hours to improve metabolic recovery.",
+        "challenge_type": HabitChallengeType.SUPPORT,
+    },
+]
+
 DEFAULT_USER = {
     "age": 38,
     "sex": "Male",
@@ -152,5 +191,56 @@ def seed_initial_data(db: Session) -> None:
     for recipe in RECIPES:
         if recipe["name"] not in existing_recipe_names:
             db.add(Recipe(**recipe))
+
+    existing_habit_codes = set(db.scalars(select(HabitDefinition.code)).all())
+    for habit in HABIT_DEFINITIONS:
+        if habit["code"] not in existing_habit_codes:
+            db.add(HabitDefinition(**habit))
+
+    db.flush()
+
+    # Seed a lightweight history so behavior analytics can render immediately.
+    habits = db.scalars(select(HabitDefinition).where(HabitDefinition.active.is_(True))).all()
+    if habits:
+        from datetime import date, timedelta
+
+        start = date.today() - timedelta(days=29)
+        for offset in range(30):
+            current_day = start + timedelta(days=offset)
+            is_sunday = current_day.weekday() == 6
+            for habit in habits:
+                exists = db.scalar(
+                    select(HabitCheckin.id).where(
+                        HabitCheckin.user_id == user.id,
+                        HabitCheckin.habit_id == habit.id,
+                        HabitCheckin.habit_date == current_day,
+                    )
+                )
+                if exists:
+                    continue
+
+                failure_reason = None
+                success = True
+                if habit.code == "no_carb_dinner" and is_sunday:
+                    success = False
+                    failure_reason = "Social dinner carb spike"
+                elif habit.code == "sleep_over_7h" and current_day.weekday() in {0, 1}:
+                    success = False
+                    failure_reason = "Late-night work carried into sleep"
+                elif habit.code == "post_meal_walk" and current_day.weekday() == 5:
+                    success = False
+                    failure_reason = "Weekend schedule drift"
+
+                db.add(
+                    HabitCheckin(
+                        user_id=user.id,
+                        habit_id=habit.id,
+                        habit_date=current_day,
+                        success=success,
+                        failure_reason=failure_reason,
+                        challenge_type_used=habit.challenge_type,
+                    )
+                )
+
 
     db.commit()

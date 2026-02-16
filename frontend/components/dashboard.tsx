@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Bolt, Camera, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
-import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type ImageAnalyzedFood, type TrendSeries } from '@/lib/api';
+import { analyzeFoodImage, confirmFoodImageLog, type AdvancedAnalytics, type AnalyzeFoodImageResponse, type HabitIntelligence, type ImageAnalyzedFood, type TrendSeries } from '@/lib/api';
 
 type DashboardProps = {
   insulinScore: number;
@@ -57,6 +57,7 @@ type DashboardProps = {
     external_links: string[];
   }>;
   analytics: AdvancedAnalytics | null;
+  habitIntelligence: HabitIntelligence | null;
 };
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: ReactNode }) {
@@ -224,6 +225,77 @@ function AdvancedAnalyticsSection({ analytics }: { analytics: AdvancedAnalytics 
       <h2 className="text-sm uppercase tracking-[0.22em] text-slate-400">Advanced Analytics Engine</h2>
       <MetabolicMomentumCard analytics={analytics} />
       {graphSeries.map((item) => <TrendGraphCard key={item.series.key} series={item.series} bold={item.bold} />)}
+    </section>
+  );
+}
+
+
+
+function HabitIntelligenceSection({ intelligence }: { intelligence: HabitIntelligence | null }) {
+  if (!intelligence) return null;
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-sm uppercase tracking-[0.22em] text-slate-400">Habit Intelligence Engine</h2>
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Overall success rate</p>
+        <p className="mt-2 text-3xl font-semibold text-emerald-300">{(intelligence.overall_success_rate * 100).toFixed(0)}%</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {intelligence.insights.map((insight) => (
+            <span key={insight} className="rounded-full border border-electric/40 bg-electric/10 px-3 py-1 text-xs text-slate-100">
+              {insight}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass-card p-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Habit heatmap</p>
+        <div className="mt-3 grid grid-cols-10 gap-1 sm:grid-cols-12 md:grid-cols-[repeat(18,minmax(0,1fr))]">
+          {intelligence.heatmap.map((cell) => {
+            const intensity = cell.intensity;
+            const tone = intensity >= 0.85
+              ? 'bg-emerald-400'
+              : intensity >= 0.6
+                ? 'bg-emerald-500/80'
+                : intensity >= 0.35
+                  ? 'bg-yellow-500/70'
+                  : intensity > 0
+                    ? 'bg-red-500/70'
+                    : 'bg-slate-800';
+            return (
+              <div
+                key={cell.date}
+                title={`${cell.date}: ${(intensity * 100).toFixed(0)}% success`}
+                className={`h-3 w-3 rounded-[2px] ${tone}`}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {intelligence.habits.map((habit) => (
+          <div key={habit.habit_id} className="glass-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">{habit.name}</p>
+                <p className="text-xs text-slate-400">{habit.description}</p>
+              </div>
+              <p className="text-xs text-slate-300">{(habit.success_rate * 100).toFixed(0)}% success</p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-300">
+              <span>Streak: {habit.current_streak}</span>
+              <span>Best: {habit.longest_streak}</span>
+              <span>Fails: {habit.failures}</span>
+              <span>Mode: {habit.challenge_type}</span>
+              {habit.challenge_type !== habit.recommended_challenge_type && (
+                <span className="text-amber-300">Adjusted to {habit.recommended_challenge_type}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -456,6 +528,7 @@ export function Dashboard(props: DashboardProps) {
       </section>
 
       <AdvancedAnalyticsSection analytics={props.analytics} />
+      <HabitIntelligenceSection intelligence={props.habitIntelligence} />
 
       <ChallengeCard challenge={props.challenge} monthlyChallenge={props.monthlyChallenge} />
 

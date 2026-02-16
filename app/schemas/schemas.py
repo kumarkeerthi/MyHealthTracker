@@ -387,3 +387,35 @@ class CoachingWaistResponse(BaseModel):
     waist_change_cm: float
     carb_ceiling_adjusted: bool
     carb_ceiling: int
+
+
+class HabitFailurePatternResponse(BaseModel):
+    reason: str
+    count: int
+
+
+class HabitStatsResponse(BaseModel):
+    habit_id: int
+    code: str
+    name: str
+    description: str
+    challenge_type: str
+    recommended_challenge_type: str
+    current_streak: int
+    longest_streak: int
+    success_rate: float
+    failures: int
+    failure_patterns: list[HabitFailurePatternResponse]
+
+
+class HabitHeatmapCellResponse(BaseModel):
+    date: date
+    intensity: float
+    count: int
+
+
+class HabitIntelligenceResponse(BaseModel):
+    habits: list[HabitStatsResponse]
+    heatmap: list[HabitHeatmapCellResponse]
+    insights: list[str]
+    overall_success_rate: float
