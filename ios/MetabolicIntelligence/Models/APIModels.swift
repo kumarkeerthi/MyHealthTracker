@@ -29,6 +29,16 @@ struct DailySummary: Decodable {
     let workouts: Int
 }
 
+struct HealthSnapshot: Codable {
+    let steps: Int
+    let restingHeartRate: Double?
+    let hrv: Double?
+    let sleepHours: Double
+    let vo2Max: Double?
+    let postMealWalkBonus: Bool
+    let capturedAt: Date
+}
+
 struct FoodLogPayload: Codable {
     let mealType: String
     let foods: [String]
@@ -50,6 +60,20 @@ struct ExercisePayload: Codable {
     let caloriesBurned: Double?
     let startedAt: Date
     let isPostMealWalk: Bool
+}
+
+struct AppleSyncBatchPayload: Codable {
+    let vitals: VitalsPayload
+    let exercise: ExercisePayload?
+    let snapshot: HealthSnapshot
+}
+
+struct StrengthSnapshot {
+    let strengthIndex: Double
+    let gripStrengthKg: Double
+    let pullUps: Int
+    let deadHangSeconds: Int
+    let pushUps: Int
 }
 
 struct AnalyzeFoodImageResponse: Decodable {
