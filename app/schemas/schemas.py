@@ -27,6 +27,71 @@ class LogFoodResponse(BaseModel):
     validations: dict[str, bool]
 
 
+
+
+class AnalyzedFoodItem(BaseModel):
+    name: str
+    estimated_quantity_grams: float
+    confidence: float = Field(ge=0, le=1)
+    estimated_protein: float
+    estimated_carbs: float
+    estimated_fat: float
+    estimated_hidden_oil: float
+
+
+class FoodImageValidationSummary(BaseModel):
+    macro_totals_valid: bool
+    food_ranges_valid: bool
+    fasting_window_ok: bool
+    carb_ceiling_ok: bool
+    oil_limit_ok: bool
+    chapati_limit_ok: bool
+    low_confidence_flag: bool
+    message: str
+
+
+class FoodImageCoachingResponse(BaseModel):
+    primary_message: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class AnalyzeFoodImageResponse(BaseModel):
+    foods: list[AnalyzedFoodItem]
+    plate_estimated_total_calories: float
+    overall_confidence: float = Field(ge=0, le=1)
+    portion_scale_factor: float
+    portion_estimation_confidence: str
+    image_url: str
+    estimated_macros: dict[str, float]
+    estimated_oil_tsp: float
+    insulin_load_impact: float
+    projected_daily_insulin_score: float
+    approval: str
+    validation: FoodImageValidationSummary
+    coaching: FoodImageCoachingResponse
+    llm_prompt_template: str
+    example_analysis_json: dict
+
+
+class ConfirmFoodImageLogRequest(BaseModel):
+    user_id: int = 1
+    consumed_at: datetime | None = None
+    meal_context: str | None = None
+    foods: list[AnalyzedFoodItem]
+    image_url: str
+    vision_confidence: float = Field(ge=0, le=1)
+    portion_scale_factor: float = 1.0
+    manual_adjustment_flag: bool = False
+
+
+class ConfirmFoodImageLogResponse(BaseModel):
+    daily_log_id: int
+    insulin_load_score: float
+    total_protein: float
+    total_carbs: float
+    total_fats: float
+    total_hidden_oil: float
+    validations: dict[str, bool]
 class LLMAnalyzeRequest(BaseModel):
     user_id: int = 1
     text: str = Field(min_length=1)

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bolt, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
+import { Bolt, Camera, Dumbbell, Hand, HeartPulse, Moon, SquareMenu, TrendingUp, Zap } from 'lucide-react';
+import { analyzeFoodImage, confirmFoodImageLog, type AnalyzeFoodImageResponse, type ImageAnalyzedFood } from '@/lib/api';
 
 type DashboardProps = {
   insulinScore: number;
@@ -121,7 +122,83 @@ function StrengthGraph({ values }: { values: number[] }) {
 
 export function Dashboard(props: DashboardProps) {
   const [tab, setTab] = useState<'metabolic' | 'exercise'>('metabolic');
+  const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null);
+  const [scanFile, setScanFile] = useState<File | null>(null);
+  const [scanMealContext, setScanMealContext] = useState('lunch');
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanResult, setScanResult] = useState<AnalyzeFoodImageResponse | null>(null);
+  const [editableFoods, setEditableFoods] = useState<ImageAnalyzedFood[]>([]);
+  const [manualEdited, setManualEdited] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
   const insulinLoadText = useMemo(() => (props.insulinScore < 40 ? 'Excellent' : props.insulinScore < 65 ? 'Moderate' : 'Needs recovery'), [props.insulinScore]);
+
+  const recomputedMetrics = useMemo(() => {
+    if (!editableFoods.length) {
+      return null;
+    }
+    const totals = editableFoods.reduce((acc, item) => {
+      acc.protein += item.estimated_protein;
+      acc.carbs += item.estimated_carbs;
+      acc.fats += item.estimated_fat;
+      acc.oil += item.estimated_hidden_oil;
+      return acc;
+    }, { protein: 0, carbs: 0, fats: 0, oil: 0 });
+    const insulinImpact = Math.max(0, Math.min(100, totals.carbs + totals.oil * 0.5 - totals.protein * 0.3));
+    return { ...totals, insulinImpact };
+  }, [editableFoods]);
+
+  async function runScan() {
+    if (!scanFile) return;
+    setScanBusy(true);
+    setScanMessage(null);
+    try {
+      const response = await analyzeFoodImage(scanFile, scanMealContext);
+      setScanResult(response);
+      setEditableFoods(response.foods);
+      setManualEdited(false);
+    } catch {
+      setScanMessage('Scan failed. Please retry with a clearer plate image.');
+    } finally {
+      setScanBusy(false);
+    }
+  }
+
+  async function confirmLog() {
+    if (!scanResult) return;
+    setScanBusy(true);
+    setScanMessage(null);
+    try {
+      await confirmFoodImageLog({
+        foods: editableFoods,
+        image_url: scanResult.image_url,
+        vision_confidence: scanResult.overall_confidence,
+        portion_scale_factor: scanResult.portion_scale_factor,
+        manual_adjustment_flag: manualEdited,
+        meal_context: scanMealContext,
+      });
+      setScanMessage('Meal logged successfully.');
+    } catch {
+      setScanMessage('Unable to log meal.');
+    } finally {
+      setScanBusy(false);
+    }
+  }
+
+  function editPortion(index: number, grams: number) {
+    setManualEdited(true);
+    setEditableFoods((prev) => prev.map((item, i) => {
+      if (i !== index) return item;
+      const ratio = grams <= 0 ? 1 : grams / Math.max(item.estimated_quantity_grams, 1);
+      return {
+        ...item,
+        estimated_quantity_grams: grams,
+        estimated_protein: Number((item.estimated_protein * ratio).toFixed(2)),
+        estimated_carbs: Number((item.estimated_carbs * ratio).toFixed(2)),
+        estimated_fat: Number((item.estimated_fat * ratio).toFixed(2)),
+        estimated_hidden_oil: Number((item.estimated_hidden_oil * ratio).toFixed(2)),
+      };
+    }));
+  }
 
   return (
     <main className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-6 text-white animate-riseIn">
@@ -195,6 +272,80 @@ export function Dashboard(props: DashboardProps) {
           <StrengthGraph values={props.weeklyStrengthGraph} />
         </>
       )}
+
+
+      <section className="glass-card p-5 space-y-3">
+        <h2 className="text-sm uppercase tracking-[0.22em] text-slate-400">Quick Actions</h2>
+        <p className="rounded-lg border border-electric/30 bg-electric/10 px-3 py-2 text-xs text-electric">Place reference card next to plate for portion accuracy.</p>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-electric/30 px-3 py-2 text-sm">
+            <Camera className="h-4 w-4" /> Scan Food
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                setScanFile(file);
+                setScanPreviewUrl(URL.createObjectURL(file));
+                setScanResult(null);
+              }}
+            />
+          </label>
+          <select value={scanMealContext} onChange={(event) => setScanMealContext(event.target.value)} className="rounded-lg bg-white/10 px-2 py-2 text-xs">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+          </select>
+          <button disabled={!scanFile || scanBusy} onClick={runScan} className="rounded-lg border border-white/20 px-3 py-2 text-xs disabled:opacity-40">
+            {scanBusy ? 'Analyzing…' : 'Analyze'}
+          </button>
+        </div>
+
+        {scanPreviewUrl ? <img src={scanPreviewUrl} alt="Food preview" className="h-40 w-full rounded-xl object-cover" /> : null}
+
+        {scanResult ? (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Food Detected</p>
+            {editableFoods.map((food, index) => (
+              <div key={`${food.name}-${index}`} className="space-y-1 rounded-lg border border-white/10 p-2">
+                <p className="text-sm font-medium">{food.name}</p>
+                <label className="text-xs text-slate-300">
+                  Portion (g)
+                  <input
+                    type="number"
+                    value={food.estimated_quantity_grams}
+                    min={1}
+                    className="ml-2 w-20 rounded bg-white/10 px-2 py-1"
+                    onChange={(event) => editPortion(index, Number(event.target.value))}
+                  />
+                </label>
+              </div>
+            ))}
+
+            <div className="text-sm text-slate-200">
+              <p>Protein: {(recomputedMetrics?.protein ?? scanResult.estimated_macros.protein).toFixed(1)} g</p>
+              <p>Carbs: {(recomputedMetrics?.carbs ?? scanResult.estimated_macros.carbs).toFixed(1)} g</p>
+              <p>Fat: {(recomputedMetrics?.fats ?? scanResult.estimated_macros.fats).toFixed(1)} g</p>
+              <p>Oil Estimate: {(recomputedMetrics?.oil ?? scanResult.estimated_oil_tsp).toFixed(1)} tsp</p>
+              <p>Insulin Impact: +{(recomputedMetrics?.insulinImpact ?? scanResult.insulin_load_impact).toFixed(1)} score increase</p>
+              <p>Approval: {scanResult.approval}</p>
+              <p className="text-xs text-amber-300">{scanResult.validation.message}</p>
+              <p className="text-xs text-emerald-300">{scanResult.coaching.primary_message}</p>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={confirmLog} disabled={scanBusy} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs">Confirm & Log</button>
+              <button onClick={() => setManualEdited(true)} className="rounded-lg border border-white/20 px-3 py-2 text-xs">Edit Portion</button>
+              <button onClick={() => { setScanResult(null); setEditableFoods([]); setScanFile(null); setScanPreviewUrl(null); }} className="rounded-lg border border-white/20 px-3 py-2 text-xs">Discard</button>
+            </div>
+          </div>
+        ) : null}
+
+        {scanMessage ? <p className="text-xs text-slate-300">{scanMessage}</p> : null}
+      </section>
 
       <ChallengeCard challenge={props.challenge} monthlyChallenge={props.monthlyChallenge} />
 

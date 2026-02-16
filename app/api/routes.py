@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -43,6 +43,9 @@ from app.schemas.schemas import (
     WhatsAppMessageRequest,
     WeeklySummaryResponse,
     MetabolicAdvisorReportResponse,
+    AnalyzeFoodImageResponse,
+    ConfirmFoodImageLogRequest,
+    ConfirmFoodImageLogResponse,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -50,6 +53,7 @@ from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
 from app.services.notification_service import notification_service
 from app.services.metabolic_advisor_service import metabolic_advisor_service
+from app.services.food_image_service import food_image_service
 from app.services.recipe_service import recipe_service
 from app.services.rule_engine import (
     calculate_daily_macros,
@@ -664,6 +668,49 @@ def update_notification_settings(
     )
 
 
+
+
+@router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)
+def analyze_food_image(
+    image: UploadFile = File(...),
+    user_id: int = Form(default=1),
+    meal_context: str | None = Form(default=None),
+    timestamp: datetime | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = get_or_create_metabolic_profile(db, user)
+    consumed_at = timestamp or datetime.utcnow()
+    image_bytes = image.file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Image file is empty")
+
+    return food_image_service.analyze_food_image(db, user, profile, image_bytes, meal_context, consumed_at)
+
+
+@router.post("/analyze-food-image/confirm", response_model=ConfirmFoodImageLogResponse)
+def confirm_food_image_log(payload: ConfirmFoodImageLogRequest, db: Session = Depends(get_db)):
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = get_or_create_metabolic_profile(db, user)
+    consumed_at = payload.consumed_at or datetime.utcnow()
+
+    return food_image_service.confirm_and_log(
+        db=db,
+        user=user,
+        profile=profile,
+        foods=[item.model_dump() for item in payload.foods],
+        image_url=payload.image_url,
+        vision_confidence=payload.vision_confidence,
+        portion_scale_factor=payload.portion_scale_factor,
+        manual_adjustment_flag=payload.manual_adjustment_flag,
+        consumed_at=consumed_at,
+    )
 @router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
 def llm_analyze(payload: LLMAnalyzeRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
