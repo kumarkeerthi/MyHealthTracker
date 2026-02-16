@@ -38,9 +38,10 @@ final class APIClient {
         method: String = "POST",
         token: String? = nil,
         payload: U? = nil,
+        extraHeaders: [String: String] = [:],
         responseType: T.Type
     ) async throws -> T {
-        let data = try await dataRequest(path: path, method: method, token: token, payload: payload)
+        let data = try await dataRequest(path: path, method: method, token: token, payload: payload, extraHeaders: extraHeaders)
         guard !data.isEmpty else { throw APIError.decodingFailed }
         do {
             return try decoder.decode(T.self, from: data)
@@ -53,9 +54,10 @@ final class APIClient {
         path: String,
         method: String = "POST",
         token: String? = nil,
-        payload: U? = nil
+        payload: U? = nil,
+        extraHeaders: [String: String] = [:]
     ) async throws {
-        _ = try await dataRequest(path: path, method: method, token: token, payload: payload)
+        _ = try await dataRequest(path: path, method: method, token: token, payload: payload, extraHeaders: extraHeaders)
     }
 
     func uploadImage(
@@ -90,13 +92,17 @@ final class APIClient {
         path: String,
         method: String,
         token: String?,
-        payload: U?
+        payload: U?,
+        extraHeaders: [String: String] = [:]
     ) async throws -> Data {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        for (key, value) in extraHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
         }
         if let payload {
             request.httpBody = try encoder.encode(payload)

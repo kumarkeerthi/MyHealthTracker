@@ -9,6 +9,8 @@ final class HealthKitManager: ObservableObject {
     private let healthStore = HKHealthStore()
     private var authManager: AuthManager?
     private var syncManager: SyncManager?
+    private var midnightTimer: Timer?
+    private var midnightTimerProxy: TimerProxy?
 
     func bootstrap(authManager: AuthManager, syncManager: SyncManager) async {
         self.authManager = authManager
@@ -18,8 +20,9 @@ final class HealthKitManager: ObservableObject {
         await requestPermissions()
         guard isAuthorized else { return }
 
-        await syncDailyVitals()
+        await syncDailyVitals(trigger: .midnight)
         enableWorkoutObserver()
+        scheduleDailyMidnightSync()
     }
 
     func requestPermissions() async {
@@ -104,8 +107,11 @@ final class HealthKitManager: ObservableObject {
         return postMealSteps >= max(350, baselineSteps * 1.5)
     }
 
-    func syncDailyVitals() async {
+    func syncDailyVitals(trigger: SyncTrigger = .manual) async {
+        _ = trigger
         guard let token = authManager?.token else { return }
+        guard let syncManager else { return }
+        guard syncManager.canSyncHealthDataNow() else { return }
 
         let steps = await fetchDailySteps()
         let resting = await fetchRestingHR()
@@ -147,6 +153,24 @@ final class HealthKitManager: ObservableObject {
         latestSnapshot = snapshot
         OfflineStore.shared.saveLastVitals(vitalsPayload)
 
+        let dateKey = ISO8601DateFormatter.healthSyncDateOnly.string(from: Date())
+        let summaryPayload = HealthSummarySyncPayload(
+            date: dateKey,
+            steps: steps,
+            restingHR: resting,
+            sleepHours: sleep,
+            hrv: hrv,
+            workouts: workouts.map {
+                HealthSyncWorkoutPayload(
+                    type: $0.workoutActivityType.name,
+                    duration: Int($0.duration / 60),
+                    calories: $0.totalEnergyBurned?.doubleValue(for: .kilocalorie()),
+                    startTime: $0.startDate
+                )
+            },
+            generatedAt: Date()
+        )
+
         do {
             try await APIClient.shared.requestNoResponse(path: "log-vitals", token: token, payload: vitalsPayload)
 
@@ -156,6 +180,15 @@ final class HealthKitManager: ObservableObject {
 
             let applePayload = AppleSyncBatchPayload(vitals: vitalsPayload, exercise: exercisePayload, snapshot: snapshot)
             try await APIClient.shared.requestNoResponse(path: "apple-sync", token: token, payload: applePayload)
+
+            let summaryBody = try encoder.encode(summaryPayload)
+            try await APIClient.shared.requestNoResponse(
+                path: "health/sync-summary",
+                token: token,
+                payload: summaryPayload,
+                extraHeaders: syncManager.signedHeaders(for: summaryBody)
+            )
+            syncManager.markSyncPerformed()
         } catch {
             syncManager?.enqueue(endpoint: "log-vitals", payload: vitalsPayload)
             if let exercisePayload {
@@ -163,15 +196,35 @@ final class HealthKitManager: ObservableObject {
             }
             let applePayload = AppleSyncBatchPayload(vitals: vitalsPayload, exercise: exercisePayload, snapshot: snapshot)
             syncManager?.enqueue(endpoint: "apple-sync", payload: applePayload)
+            syncManager?.enqueue(endpoint: "health/sync-summary", payload: summaryPayload)
         }
     }
 
     private func enableWorkoutObserver() {
         let workoutType = HKObjectType.workoutType()
         let query = HKObserverQuery(sampleType: workoutType, predicate: nil) { [weak self] _, _, _ in
-            Task { await self?.syncDailyVitals() }
+            Task { await self?.syncDailyVitals(trigger: .workout) }
         }
         healthStore.execute(query)
+    }
+
+
+
+    func manualRefreshSync() async {
+        await syncDailyVitals(trigger: .manual)
+    }
+
+    private func scheduleDailyMidnightSync() {
+        midnightTimer?.invalidate()
+        let nextMidnight = Calendar.current.nextDate(after: Date(), matching: DateComponents(hour: 0, minute: 0, second: 5), matchingPolicy: .nextTime) ?? Date().addingTimeInterval(3600)
+        midnightTimerProxy = TimerProxy { [weak self] in
+            Task { await self?.syncDailyVitals(trigger: .midnight) }
+        }
+        guard let midnightTimerProxy else { return }
+        midnightTimer = Timer(fireAt: nextMidnight, interval: 86400, target: midnightTimerProxy, selector: #selector(TimerProxy.fire), userInfo: nil, repeats: true)
+        if let timer = midnightTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
     }
 
     private func todayAverage(for identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double? {
@@ -221,4 +274,31 @@ private extension HKWorkoutActivityType {
         default: return "other"
         }
     }
+}
+
+
+private enum SyncTrigger {
+    case midnight
+    case workout
+    case manual
+}
+
+private final class TimerProxy: NSObject {
+    private let callback: () -> Void
+
+    init(callback: @escaping () -> Void) {
+        self.callback = callback
+    }
+
+    @objc func fire() {
+        callback()
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static let healthSyncDateOnly: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        return formatter
+    }()
 }

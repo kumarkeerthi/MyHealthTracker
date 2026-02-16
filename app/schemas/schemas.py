@@ -280,6 +280,23 @@ class AppleHealthImportRequest(BaseModel):
     relay: dict | None = None
 
 
+class HealthWorkoutSyncPayload(BaseModel):
+    type: str = Field(min_length=2, max_length=80)
+    duration: int = Field(ge=1, le=1440)
+    calories: float | None = Field(default=None, ge=0, le=10000)
+    start_time: datetime
+
+
+class HealthSummarySyncPayload(BaseModel):
+    date: date
+    steps: int = Field(ge=0, le=50000)
+    resting_hr: float | None = Field(default=None, ge=25, le=220)
+    sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    hrv: float | None = Field(default=None, ge=0, le=400)
+    workouts: list[HealthWorkoutSyncPayload] = Field(default_factory=list, max_length=30)
+    generated_at: datetime
+
+
 class MonkeyBarProgressResponse(BaseModel):
     dead_hang_duration_seconds: int
     pull_up_count: int

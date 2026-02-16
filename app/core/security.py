@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import html
 import json
 import re
@@ -162,6 +163,44 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
 
         request._receive = receive
         return await call_next(request)
+
+
+class RequestReplayGuard:
+    def __init__(self):
+        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def seen_recently(self, key: str, ttl_seconds: int) -> bool:
+        now = time.time()
+        window_start = now - ttl_seconds
+        with self._lock:
+            bucket = self._events[key]
+            while bucket and bucket[0] < window_start:
+                bucket.popleft()
+            if bucket:
+                return True
+            bucket.append(now)
+            return False
+
+
+request_replay_guard = RequestReplayGuard()
+
+
+def verify_request_signature(*, body: bytes, signature: str, timestamp: int, ttl_seconds: int, secret: str) -> bool:
+    now = int(time.time())
+    if abs(now - timestamp) > ttl_seconds:
+        return False
+
+    message = f"{timestamp}.".encode("utf-8") + body
+    expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        return False
+
+    replay_key = f"{signature}:{timestamp}"
+    if request_replay_guard.seen_recently(replay_key, ttl_seconds):
+        return False
+
+    return True
 
 
 class LLMUsageLimiter:

@@ -68,6 +68,41 @@ struct AppleSyncBatchPayload: Codable {
     let snapshot: HealthSnapshot
 }
 
+
+struct HealthSyncWorkoutPayload: Codable {
+    let type: String
+    let duration: Int
+    let calories: Double?
+    let startTime: Date
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case duration
+        case calories
+        case startTime = "start_time"
+    }
+}
+
+struct HealthSummarySyncPayload: Codable {
+    let date: String
+    let steps: Int
+    let restingHR: Double?
+    let sleepHours: Double
+    let hrv: Double?
+    let workouts: [HealthSyncWorkoutPayload]
+    let generatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case steps
+        case restingHR = "resting_hr"
+        case sleepHours = "sleep_hours"
+        case hrv
+        case workouts
+        case generatedAt = "generated_at"
+    }
+}
+
 struct StrengthSnapshot {
     let strengthIndex: Double
     let gripStrengthKg: Double
