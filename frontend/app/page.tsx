@@ -16,6 +16,14 @@ export default async function Home() {
       protein={daily?.total_protein ?? 62}
       carbs={daily?.total_carbs ?? 54}
       oil={daily?.total_hidden_oil ?? 2.1}
+      sugar={daily?.total_sugar ?? 0}
+      fiber={daily?.total_fiber ?? 0}
+      fruitServings={daily?.fruit_servings ?? 0}
+      fruitBudget={daily?.fruit_budget ?? 1}
+      nutServings={daily?.nuts_servings ?? 0}
+      nutBudget={daily?.nuts_budget ?? 1}
+      remainingCarbBudget={daily?.remaining_carb_budget ?? 0}
+      fruitNutWarnings={daily?.warnings ?? []}
       chapatiCount={Math.min(1, profile?.max_chapati_per_day ?? 2)}
       chapatiLimit={profile?.max_chapati_per_day ?? 2}
       restingHr={vitals?.latest_resting_hr ?? 72}

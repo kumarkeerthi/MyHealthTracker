@@ -11,6 +11,14 @@ type DashboardProps = {
   protein: number;
   carbs: number;
   oil: number;
+  sugar: number;
+  fiber: number;
+  fruitServings: number;
+  fruitBudget: number;
+  nutServings: number;
+  nutBudget: number;
+  remainingCarbBudget: number;
+  fruitNutWarnings: string[];
   chapatiCount: number;
   chapatiLimit: number;
   restingHr: number;
@@ -80,6 +88,19 @@ function MacroBar({ label, value, max, color }: { label: string; value: number; 
   );
 }
 
+
+
+function FruitNutMeter({ fruitServings, fruitBudget, nutServings, nutBudget, remainingCarbBudget, warnings }: { fruitServings: number; fruitBudget: number; nutServings: number; nutBudget: number; remainingCarbBudget: number; warnings: string[] }) {
+  return (
+    <section className="glass-card p-5 space-y-2">
+      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Fruit & Nut Meter</p>
+      <p className="text-sm text-slate-200">Fruit budget: {fruitServings.toFixed(1)}/{fruitBudget.toFixed(1)}</p>
+      <p className="text-sm text-slate-200">Nuts budget: {nutServings.toFixed(1)}/{nutBudget.toFixed(1)}</p>
+      <p className="text-xs text-amber-300">Remaining carb budget impact: {remainingCarbBudget.toFixed(1)}g</p>
+      {warnings.map((warning) => <p key={warning} className="text-xs text-red-300">{warning}</p>)}
+    </section>
+  );
+}
 
 function ChallengeCard({
   challenge,
@@ -208,6 +229,10 @@ function AdvancedAnalyticsSection({ analytics }: { analytics: AdvancedAnalytics 
 
   const graphSeries: Array<{ series: TrendSeries; bold?: boolean }> = [
     { series: analytics.insulin_load_trend },
+    { series: analytics.fruit_frequency_trend },
+    { series: analytics.nut_frequency_trend },
+    { series: analytics.sugar_load_trend },
+    { series: analytics.hdl_support_trend },
     { series: analytics.waist_trend, bold: true },
     { series: analytics.weight_trend },
     { series: analytics.protein_intake_consistency },
@@ -442,6 +467,17 @@ export function Dashboard(props: DashboardProps) {
           <MacroBar label="Protein" value={props.protein} max={130} color="#34d399" />
           <MacroBar label="Carbs" value={props.carbs} max={120} color="#f59e0b" />
           <MacroBar label="Hidden Oil" value={props.oil} max={6} color="#ef4444" />
+          <MacroBar label="Sugar" value={props.sugar} max={30} color="#fb7185" />
+          <MacroBar label="Fiber" value={props.fiber} max={30} color="#22c55e" />
+
+          <FruitNutMeter
+            fruitServings={props.fruitServings}
+            fruitBudget={props.fruitBudget}
+            nutServings={props.nutServings}
+            nutBudget={props.nutBudget}
+            remainingCarbBudget={props.remainingCarbBudget}
+            warnings={props.fruitNutWarnings}
+          />
 
           <div className="glass-card p-4 text-sm">Chapati Counter: {props.chapatiCount}/{props.chapatiLimit}</div>
 

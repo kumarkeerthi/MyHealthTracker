@@ -23,8 +23,17 @@ class LogFoodResponse(BaseModel):
     total_protein: float
     total_carbs: float
     total_fats: float
+    total_sugar: float
+    total_fiber: float
     total_hidden_oil: float
     insulin_load_score: float
+    fruit_servings: float
+    fruit_budget: float
+    nuts_servings: float
+    nuts_budget: float
+    remaining_carb_budget: float
+    suggestions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     validations: dict[str, bool]
 
 
@@ -216,8 +225,16 @@ class DailySummaryResponse(BaseModel):
     total_protein: float
     total_carbs: float
     total_fats: float
+    total_sugar: float = 0
+    total_fiber: float = 0
     total_hidden_oil: float
     insulin_load_score: float | None
+    fruit_servings: float = 0
+    fruit_budget: float = 1
+    nuts_servings: float = 0
+    nuts_budget: float = 1
+    remaining_carb_budget: float = 0
+    warnings: list[str] = Field(default_factory=list)
     validations: dict[str, bool]
 
 
@@ -309,6 +326,10 @@ class AdvancedAnalyticsResponse(BaseModel):
     start_date: date
     end_date: date
     insulin_load_trend: TrendSeriesResponse
+    fruit_frequency_trend: TrendSeriesResponse
+    nut_frequency_trend: TrendSeriesResponse
+    sugar_load_trend: TrendSeriesResponse
+    hdl_support_trend: TrendSeriesResponse
     waist_trend: TrendSeriesResponse
     weight_trend: TrendSeriesResponse
     protein_intake_consistency: TrendSeriesResponse

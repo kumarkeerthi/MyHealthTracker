@@ -24,6 +24,21 @@ FOOD_ITEMS = [
     {"name": "Carrot", "protein": 0.9, "carbs": 9.6, "fats": 0.2, "glycemic_load": 4.0, "hidden_oil_estimate": 0.1},
     {"name": "Dark chocolate", "protein": 1.0, "carbs": 6.0, "fats": 5.0, "glycemic_load": 3.0, "hidden_oil_estimate": 0.0},
     {"name": "Milk coffee", "protein": 3.0, "carbs": 4.0, "fats": 2.0, "glycemic_load": 2.0, "hidden_oil_estimate": 0.0},
+    {"name": "Almond (10 pieces)", "protein": 2.6, "carbs": 2.4, "sugar": 0.5, "fiber": 1.4, "fats": 6.1, "glycemic_load": 0.2, "hdl_support_score": 8.5, "triglyceride_risk_weight": 0.2, "food_group": "nut", "hidden_oil_estimate": 0.0},
+    {"name": "Walnut (2 halves)", "protein": 0.9, "carbs": 0.8, "sugar": 0.2, "fiber": 0.4, "fats": 4.5, "glycemic_load": 0.1, "hdl_support_score": 9.0, "triglyceride_risk_weight": 0.2, "food_group": "nut", "hidden_oil_estimate": 0.0},
+    {"name": "Pistachio (10 pieces)", "protein": 2.2, "carbs": 2.8, "sugar": 1.0, "fiber": 1.1, "fats": 4.4, "glycemic_load": 0.6, "hdl_support_score": 7.8, "triglyceride_risk_weight": 0.3, "food_group": "nut", "hidden_oil_estimate": 0.0},
+    {"name": "Cashew (5 pieces)", "protein": 1.5, "carbs": 4.3, "sugar": 1.0, "fiber": 0.3, "fats": 4.0, "glycemic_load": 1.0, "hdl_support_score": 6.5, "triglyceride_risk_weight": 0.5, "food_group": "nut", "hidden_oil_estimate": 0.0},
+    {"name": "Flaxseed (1 tbsp)", "protein": 1.9, "carbs": 3.0, "sugar": 0.2, "fiber": 2.8, "fats": 4.3, "glycemic_load": 0.2, "hdl_support_score": 9.5, "triglyceride_risk_weight": 0.1, "food_group": "nut", "nut_seed_exception": True, "hidden_oil_estimate": 0.0},
+    {"name": "Chia seed (1 tbsp)", "protein": 1.7, "carbs": 4.9, "sugar": 0.0, "fiber": 4.1, "fats": 3.1, "glycemic_load": 0.2, "hdl_support_score": 9.3, "triglyceride_risk_weight": 0.1, "food_group": "nut", "nut_seed_exception": True, "hidden_oil_estimate": 0.0},
+    {"name": "Apple (1 medium)", "protein": 0.5, "carbs": 25.0, "sugar": 19.0, "fiber": 4.4, "fats": 0.3, "glycemic_load": 6.0, "hdl_support_score": 2.0, "triglyceride_risk_weight": 0.5, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Guava (1 medium)", "protein": 2.6, "carbs": 14.0, "sugar": 9.0, "fiber": 5.4, "fats": 1.0, "glycemic_load": 3.0, "hdl_support_score": 4.2, "triglyceride_risk_weight": 0.3, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Pomegranate (1/2 cup)", "protein": 1.5, "carbs": 16.0, "sugar": 12.0, "fiber": 3.5, "fats": 1.0, "glycemic_load": 5.0, "hdl_support_score": 3.6, "triglyceride_risk_weight": 0.4, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Orange (1 medium)", "protein": 1.2, "carbs": 15.0, "sugar": 12.0, "fiber": 3.1, "fats": 0.2, "glycemic_load": 4.0, "hdl_support_score": 2.8, "triglyceride_risk_weight": 0.3, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Berries (1/2 cup)", "protein": 0.8, "carbs": 8.0, "sugar": 5.0, "fiber": 3.6, "fats": 0.3, "glycemic_load": 2.0, "hdl_support_score": 3.2, "triglyceride_risk_weight": 0.2, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Papaya (small portion)", "protein": 0.7, "carbs": 11.0, "sugar": 8.0, "fiber": 1.7, "fats": 0.3, "glycemic_load": 3.0, "hdl_support_score": 2.1, "triglyceride_risk_weight": 0.3, "food_group": "fruit", "hidden_oil_estimate": 0.0},
+    {"name": "Banana", "protein": 1.3, "carbs": 27.0, "sugar": 14.0, "fiber": 3.1, "fats": 0.3, "glycemic_load": 13.0, "hdl_support_score": 1.0, "triglyceride_risk_weight": 0.9, "food_group": "fruit", "high_carb_flag": True, "hidden_oil_estimate": 0.0},
+    {"name": "Mango", "protein": 1.0, "carbs": 25.0, "sugar": 22.0, "fiber": 2.6, "fats": 0.4, "glycemic_load": 12.0, "hdl_support_score": 1.3, "triglyceride_risk_weight": 1.0, "food_group": "fruit", "high_carb_flag": True, "hidden_oil_estimate": 0.0},
+    {"name": "Grapes", "protein": 0.6, "carbs": 18.0, "sugar": 15.0, "fiber": 1.0, "fats": 0.2, "glycemic_load": 11.0, "hdl_support_score": 1.0, "triglyceride_risk_weight": 0.8, "food_group": "fruit", "high_carb_flag": True, "hidden_oil_estimate": 0.0},
 ]
 
 
@@ -190,6 +205,7 @@ def seed_initial_data(db: Session) -> None:
                 carb_ceiling_current=user.carb_ceiling,
                 protein_target_current=user.protein_target_min,
                 fruit_allowance_current=1,
+                fruit_allowance_weekly=7,
                 notes="Initialized from seed defaults.",
             )
         )
