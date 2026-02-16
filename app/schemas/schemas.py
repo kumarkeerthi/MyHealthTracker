@@ -187,3 +187,39 @@ class VitalsSummaryResponse(BaseModel):
     latest_resting_hr: float | None
     latest_sleep_hours: float | None
     risk_flag: str
+
+
+class WhatsAppMessageRequest(BaseModel):
+    user_id: int = 1
+    text: str = Field(min_length=1)
+    received_at: datetime | None = None
+
+
+class CoachingMessageResponse(BaseModel):
+    channel: str
+    title: str
+    body: str
+    insulin_load_delta: float
+    approval_status: str
+    suggested_action: str
+
+
+class NotificationEventRequest(BaseModel):
+    user_id: int = 1
+    event_type: str = Field(min_length=1)
+    payload: dict = Field(default_factory=dict)
+
+
+class NotificationSettingsResponse(BaseModel):
+    user_id: int
+    whatsapp_enabled: bool
+    push_enabled: bool
+    email_enabled: bool
+    silent_mode: bool
+
+
+class UpdateNotificationSettingsRequest(BaseModel):
+    whatsapp_enabled: bool | None = None
+    push_enabled: bool | None = None
+    email_enabled: bool | None = None
+    silent_mode: bool | None = None

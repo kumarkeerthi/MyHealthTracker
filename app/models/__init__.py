@@ -6,6 +6,7 @@ from app.models.models import (
     InsulinScore,
     MealEntry,
     MetabolicProfile,
+    NotificationSettings,
     User,
     VitalsEntry,
 )
@@ -20,4 +21,5 @@ __all__ = [
     "ExerciseCategory",
     "ExerciseEntry",
     "InsulinScore",
+    "NotificationSettings",
 ]

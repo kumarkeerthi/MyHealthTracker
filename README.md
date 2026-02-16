@@ -9,6 +9,7 @@ Clinical-grade metabolic intelligence backend built with FastAPI, SQLAlchemy, an
 - Expanded vitals model (`resting_hr`, `sleep_hours`, `waist_cm`, `hrv`, `steps_total`, `body_fat_percentage`).
 - Apple Health web-friendly ingestion endpoint and service layer.
 - New profile, exercise summary, vitals summary, and external-event endpoints.
+- WhatsApp webhook, notification event webhook, notification settings API, and automated coaching scheduler.
 
 ## Stack
 - Python
@@ -41,6 +42,10 @@ Added:
 - `POST /import-apple-health`
 - `POST /external-event`
 - `POST /llm/analyze`
+- `POST /whatsapp-message`
+- `POST /notification-event`
+- `GET /notification-settings`
+- `PUT /notification-settings`
 
 
 
@@ -53,6 +58,15 @@ export LLM_CACHE_TTL_SECONDS=900
 ```
 
 `POST /llm/analyze` extracts food items, portion and estimated macros via strict JSON schema, then enforces deterministic fasting/carb/oil rules. If LLM fails, the service falls back to local food-catalog matching.
+
+## Messaging + Notification layer (Phase 5)
+- Daily coaching cron jobs run at 08:00, 13:00, and 18:00 UTC.
+- Alert automation:
+  - Insulin score > 70 → push: `High carb load detected. 20 min walk suggested.`
+  - Protein < 80g → push: `HDL support compromised.`
+- Notification settings supports toggles for WhatsApp, push, email, and silent mode.
+
+Implementation details and OpenClaw integration notes are documented in `docs/openclaw_notification_layer.md`.
 
 ## Dev run
 ```bash

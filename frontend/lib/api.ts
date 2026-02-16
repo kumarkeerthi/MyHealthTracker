@@ -32,6 +32,14 @@ export type ExerciseSummary = {
   weekly_strength_graph: number[];
 };
 
+export type NotificationSettings = {
+  user_id: number;
+  whatsapp_enabled: boolean;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  silent_mode: boolean;
+};
+
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 async function readJson<T>(path: string): Promise<T | null> {
@@ -60,4 +68,24 @@ export async function getDashboardData() {
     vitals,
     exercise,
   };
+}
+
+export async function getNotificationSettings() {
+  return await readJson<NotificationSettings>('/notification-settings?user_id=1');
+}
+
+export async function updateNotificationSettings(payload: Partial<Omit<NotificationSettings, 'user_id'>>) {
+  const response = await fetch(`${baseUrl}/notification-settings?user_id=1`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update notification settings');
+  }
+
+  return (await response.json()) as NotificationSettings;
 }

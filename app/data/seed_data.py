@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FoodItem, MetabolicProfile, User
+from app.models import FoodItem, MetabolicProfile, NotificationSettings, User
 
 
 FOOD_ITEMS = [
@@ -74,6 +74,10 @@ def seed_initial_data(db: Session) -> None:
     profile_exists = db.scalar(select(MetabolicProfile.id).where(MetabolicProfile.user_id == user.id))
     if not profile_exists:
         db.add(MetabolicProfile(user_id=user.id, **DEFAULT_METABOLIC_PROFILE))
+
+    notification_settings_exists = db.scalar(select(NotificationSettings.id).where(NotificationSettings.user_id == user.id))
+    if not notification_settings_exists:
+        db.add(NotificationSettings(user_id=user.id))
 
     existing_food_names = set(db.scalars(select(FoodItem.name)).all())
     for food in FOOD_ITEMS:
