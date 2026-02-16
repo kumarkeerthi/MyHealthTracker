@@ -80,6 +80,15 @@ type DashboardProps = {
   analytics: AdvancedAnalytics | null;
   habitIntelligence: HabitIntelligence | null;
   metabolicPerformance: MetabolicPhasePerformance | null;
+  movementPanel: {
+    post_meal_walk_status: string;
+    steps_today: number;
+    walk_streak: number;
+    recovery_prompt: string;
+    badge?: string | null;
+    alerts_remaining: number;
+    post_meal_walk_bonus: boolean;
+  };
   waterMl: number;
   hydrationScore: number;
   hydrationTargetMinMl: number;
@@ -221,6 +230,16 @@ export function Dashboard(props: DashboardProps) {
           {tab === 'home' && (
             <div className="space-y-4">
               <DashboardView insulinScore={props.insulinScore} compliance={props.compliance} hydrationScore={props.hydrationScore} waterMl={props.waterMl} sleepHours={props.sleepHours} protein={props.protein} carbs={props.carbs} oil={props.oil} proteinHit={props.proteinHit} carbUnderCeiling={props.carbUnderCeiling} hydrationTargetAchieved={props.hydrationTargetAchieved} strengthLogged={props.strengthIndex > 0} />
+              <section className="glass-card p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Movement Panel</p>
+                <div className="mt-2 space-y-1 text-sm text-slate-200">
+                  <p>PostMealWalk: {props.movementPanel.post_meal_walk_status}</p>
+                  <p>Steps today: {props.movementPanel.steps_today}</p>
+                  <p>Walk streak: {props.movementPanel.walk_streak}</p>
+                  <p>Recovery prompt: {props.movementPanel.recovery_prompt}</p>
+                  {props.movementPanel.badge ? <p className="text-emerald-300">Badge: {props.movementPanel.badge}</p> : null}
+                </div>
+              </section>
               <ChallengesView challengeTitle={props.challenge.title} challengeDesc={props.challenge.description} streak={props.challenge.current_streak} />
             </div>
           )}

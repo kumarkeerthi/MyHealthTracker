@@ -9,11 +9,20 @@ type Props = {
   initialSettings: NotificationSettings;
 };
 
+type ToggleKey =
+  | 'protein_reminders_enabled'
+  | 'fasting_alerts_enabled'
+  | 'hydration_alerts_enabled'
+  | 'insulin_alerts_enabled'
+  | 'strength_reminders_enabled'
+  | 'push_enabled'
+  | 'silent_mode';
+
 export function NotificationSettingsForm({ initialSettings }: Props) {
   const [settings, setSettings] = useState(initialSettings);
   const [status, setStatus] = useState<string>('');
 
-  async function onToggle(key: keyof Omit<NotificationSettings, 'user_id'>) {
+  async function onToggle(key: ToggleKey) {
     const next = { ...settings, [key]: !settings[key] };
     setSettings(next);
     try {
@@ -26,14 +35,16 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
     }
   }
 
-  async function saveQuietHours(key: 'quiet_hours_start' | 'quiet_hours_end', value: string) {
-    const next = { ...settings, [key]: value };
+  async function saveField(
+    payload: Partial<Pick<NotificationSettings, 'quiet_hours_start' | 'quiet_hours_end' | 'movement_reminder_delay_minutes' | 'movement_sensitivity'>>,
+  ) {
+    const next = { ...settings, ...payload };
     setSettings(next);
-    const saved = await updateNotificationSettings({ [key]: value });
+    const saved = await updateNotificationSettings(payload);
     setSettings(saved);
   }
 
-  const options: Array<{ key: keyof Omit<NotificationSettings, 'user_id'>; label: string; helper: string }> = [
+  const options: Array<{ key: ToggleKey; label: string; helper: string }> = [
     { key: 'protein_reminders_enabled', label: 'Protein reminders', helper: 'Protein first nudges.' },
     { key: 'fasting_alerts_enabled', label: 'Fasting alerts', helper: 'Window-start fasting reminders.' },
     { key: 'hydration_alerts_enabled', label: 'Hydration alerts', helper: 'Water adherence prompts.' },
@@ -63,6 +74,33 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
         </section>
       ))}
 
+      <section className="glass-card space-y-3 p-4">
+        <p className="font-medium">Movement Intelligence</p>
+        <label className="block space-y-1 text-xs">
+          <span className="text-slate-400">Reminder delay (minutes)</span>
+          <input
+            type="number"
+            min={15}
+            max={90}
+            value={settings.movement_reminder_delay_minutes}
+            onChange={(event) => saveField({ movement_reminder_delay_minutes: Number(event.target.value) })}
+            className="w-full rounded bg-white/10 px-2 py-1"
+          />
+        </label>
+        <label className="block space-y-1 text-xs">
+          <span className="text-slate-400">Sensitivity</span>
+          <select
+            value={settings.movement_sensitivity}
+            onChange={(event) => saveField({ movement_sensitivity: event.target.value })}
+            className="w-full rounded bg-white/10 px-2 py-1"
+          >
+            <option value="strict">Strict</option>
+            <option value="balanced">Balanced</option>
+            <option value="relaxed">Relaxed</option>
+          </select>
+        </label>
+      </section>
+
       <section className="glass-card space-y-2 p-4">
         <p className="font-medium">Quiet hours</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -71,7 +109,7 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
             <input
               type="time"
               value={settings.quiet_hours_start ?? ''}
-              onChange={(event) => saveQuietHours('quiet_hours_start', event.target.value)}
+              onChange={(event) => saveField({ quiet_hours_start: event.target.value })}
               className="w-full rounded bg-white/10 px-2 py-1"
             />
           </label>
@@ -80,7 +118,7 @@ export function NotificationSettingsForm({ initialSettings }: Props) {
             <input
               type="time"
               value={settings.quiet_hours_end ?? ''}
-              onChange={(event) => saveQuietHours('quiet_hours_end', event.target.value)}
+              onChange={(event) => saveField({ quiet_hours_end: event.target.value })}
               className="w-full rounded bg-white/10 px-2 py-1"
             />
           </label>

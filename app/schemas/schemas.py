@@ -340,6 +340,7 @@ class AdvancedAnalyticsResponse(BaseModel):
     nut_frequency_trend: TrendSeriesResponse
     sugar_load_trend: TrendSeriesResponse
     hdl_support_trend: TrendSeriesResponse
+    walk_vs_insulin_correlation: TrendSeriesResponse
     waist_trend: TrendSeriesResponse
     weight_trend: TrendSeriesResponse
     protein_intake_consistency: TrendSeriesResponse
@@ -457,6 +458,8 @@ class NotificationSettingsResponse(BaseModel):
     strength_reminders_enabled: bool
     quiet_hours_start: str | None = None
     quiet_hours_end: str | None = None
+    movement_reminder_delay_minutes: int = 45
+    movement_sensitivity: str = "balanced"
 
 
 class UpdateNotificationSettingsRequest(BaseModel):
@@ -469,6 +472,33 @@ class UpdateNotificationSettingsRequest(BaseModel):
     hydration_alerts_enabled: bool | None = None
     insulin_alerts_enabled: bool | None = None
     strength_reminders_enabled: bool | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+    movement_reminder_delay_minutes: int | None = None
+    movement_sensitivity: str | None = None
+
+
+class MovementPanelResponse(BaseModel):
+    post_meal_walk_status: str
+    steps_today: int
+    walk_streak: int
+    recovery_prompt: str
+    badge: str | None = None
+    alerts_remaining: int
+    post_meal_walk_bonus: bool
+
+
+class MovementSettingsResponse(BaseModel):
+    user_id: int
+    reminder_delay_minutes: int
+    sensitivity: str
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+
+
+class UpdateMovementSettingsRequest(BaseModel):
+    reminder_delay_minutes: int | None = Field(default=None, ge=15, le=90)
+    sensitivity: str | None = None
     quiet_hours_start: str | None = None
     quiet_hours_end: str | None = None
 

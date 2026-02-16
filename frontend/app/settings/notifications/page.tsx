@@ -17,6 +17,8 @@ export default async function NotificationSettingsPage() {
       strength_reminders_enabled: true,
       quiet_hours_start: null,
       quiet_hours_end: null,
+      movement_reminder_delay_minutes: 45,
+      movement_sensitivity: "balanced",
     };
 
   return <NotificationSettingsForm initialSettings={settings} />;

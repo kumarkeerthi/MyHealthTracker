@@ -38,7 +38,7 @@ export function AnalyticsView({ analytics, momentumLabel }: { analytics: Advance
     return <section className="glass-card p-4 text-sm text-slate-300">Analytics are warming up.</section>;
   }
 
-  const series = [analytics.waist_trend, analytics.insulin_load_trend, analytics.strength_score_trend, analytics.sleep_trend];
+  const series = [analytics.waist_trend, analytics.insulin_load_trend, analytics.walk_vs_insulin_correlation, analytics.strength_score_trend, analytics.sleep_trend];
 
   return (
     <section className="space-y-4">

@@ -55,6 +55,9 @@ from app.schemas.schemas import (
     AdvancedAnalyticsResponse,
     HabitIntelligenceResponse,
     MetabolicPhasePerformanceResponse,
+    MovementPanelResponse,
+    MovementSettingsResponse,
+    UpdateMovementSettingsRequest,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -69,6 +72,7 @@ from app.services.recipe_service import recipe_service
 from app.services.analytics_engine import analytics_engine
 from app.services.habit_intelligence_engine import habit_intelligence_engine
 from app.services.metabolic_phase_service import metabolic_phase_service
+from app.services.movement_engine import movement_engine
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -208,6 +212,7 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
 
     db.add(InsulinScore(daily_log_id=daily_log.id, score=status["insulin_load_score"], raw_score=status["insulin_load_raw_score"]))
     alerts = notification_service.evaluate_daily_alerts(db, payload.user_id, daily_log, status["insulin_load_score"])
+    movement_engine.evaluate(db, payload.user_id, now=payload.consumed_at)
     db.commit()
 
     fruit_budget_limit = 1
@@ -430,6 +435,7 @@ def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
         performed_at=payload.performed_at or datetime.utcnow(),
     )
     db.add(entry)
+    movement_engine.evaluate(db, payload.user_id, now=payload.performed_at or datetime.utcnow())
     db.commit()
     return {"status": "ok", "exercise_entry_id": entry.id}
 
@@ -637,7 +643,16 @@ def apple_sync(
 
     service = AppleHealthService(db)
     result = service.ingest(user, payload.model_dump())
-    return {"status": "ok", **result}
+    source = payload.health_export or payload.relay or {}
+    step_hook = movement_engine.process_apple_steps(
+        db,
+        user_id=user.id,
+        steps_total=int(source.get("steps", 0) or 0),
+        recorded_at=datetime.utcnow(),
+    )
+    movement_engine.evaluate(db, user.id)
+    db.commit()
+    return {"status": "ok", **result, **step_hook}
 
 
 @router.post("/import-apple-health")
@@ -805,6 +820,8 @@ def get_notification_settings(user_id: int = Query(default=1), db: Session = Dep
         strength_reminders_enabled=settings.strength_reminders_enabled,
         quiet_hours_start=settings.quiet_hours_start,
         quiet_hours_end=settings.quiet_hours_end,
+        movement_reminder_delay_minutes=settings.movement_reminder_delay_minutes,
+        movement_sensitivity=settings.movement_sensitivity,
     )
 
 
@@ -837,6 +854,52 @@ def update_notification_settings(
         hydration_alerts_enabled=settings.hydration_alerts_enabled,
         insulin_alerts_enabled=settings.insulin_alerts_enabled,
         strength_reminders_enabled=settings.strength_reminders_enabled,
+        quiet_hours_start=settings.quiet_hours_start,
+        quiet_hours_end=settings.quiet_hours_end,
+        movement_reminder_delay_minutes=settings.movement_reminder_delay_minutes,
+        movement_sensitivity=settings.movement_sensitivity,
+    )
+
+
+@router.get("/movement/panel", response_model=MovementPanelResponse)
+def movement_panel(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    panel = movement_engine.build_panel(db, user_id)
+    return MovementPanelResponse(**panel)
+
+
+@router.get("/movement/settings", response_model=MovementSettingsResponse)
+def get_movement_settings(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings = movement_engine.get_settings(db, user_id)
+    return MovementSettingsResponse(
+        user_id=user_id,
+        reminder_delay_minutes=settings.reminder_delay_minutes,
+        sensitivity=settings.sensitivity,
+        quiet_hours_start=settings.quiet_hours_start,
+        quiet_hours_end=settings.quiet_hours_end,
+    )
+
+
+@router.put("/movement/settings", response_model=MovementSettingsResponse)
+def update_movement_settings(
+    payload: UpdateMovementSettingsRequest,
+    user_id: int = Query(default=1),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings = movement_engine.update_settings(db, user_id, payload.model_dump(exclude_none=True))
+    db.commit()
+    return MovementSettingsResponse(
+        user_id=user_id,
+        reminder_delay_minutes=settings.reminder_delay_minutes,
+        sensitivity=settings.sensitivity,
         quiet_hours_start=settings.quiet_hours_start,
         quiet_hours_end=settings.quiet_hours_end,
     )
