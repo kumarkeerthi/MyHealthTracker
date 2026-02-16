@@ -99,6 +99,22 @@ class FoodItem(Base):
     meal_entries: Mapped[list["MealEntry"]] = relationship(back_populates="food_item")
 
 
+class Recipe(Base):
+    __tablename__ = "recipes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
+    ingredients: Mapped[str] = mapped_column(String(800), nullable=False)
+    protein: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs: Mapped[float] = mapped_column(Float, nullable=False)
+    fats: Mapped[float] = mapped_column(Float, nullable=False)
+    cooking_time_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    oil_usage_tsp: Mapped[float] = mapped_column(Float, nullable=False)
+    insulin_score_impact: Mapped[float] = mapped_column(Float, nullable=False)
+    external_link_primary: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    external_link_secondary: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
 class DailyLog(Base):
     __tablename__ = "daily_logs"
     __table_args__ = (UniqueConstraint("user_id", "log_date", name="uq_user_log_date"),)

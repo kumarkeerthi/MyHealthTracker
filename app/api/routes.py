@@ -16,6 +16,7 @@ from app.models import (
     MealEntry,
     User,
     VitalsEntry,
+    Recipe,
 )
 from app.schemas.schemas import (
     AppleHealthImportRequest,
@@ -34,6 +35,8 @@ from app.schemas.schemas import (
     NotificationEventRequest,
     NotificationSettingsResponse,
     ProfileResponse,
+    RecipeResponse,
+    RecipeSuggestionResponse,
     UpdateNotificationSettingsRequest,
     UpdateProfileRequest,
     VitalsSummaryResponse,
@@ -45,6 +48,7 @@ from app.services.challenge_engine import ChallengeEngine
 from app.services.exercise_engine import is_supported_movement
 from app.services.llm_service import llm_service
 from app.services.notification_service import notification_service
+from app.services.recipe_service import recipe_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -64,6 +68,20 @@ from app.services.strength_engine import (
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
+
+
+def _to_recipe_response(recipe: Recipe) -> RecipeResponse:
+    links = [link for link in [recipe.external_link_primary, recipe.external_link_secondary] if link]
+    return RecipeResponse(
+        id=recipe.id,
+        name=recipe.name,
+        ingredients=recipe.ingredients,
+        macros={"protein": recipe.protein, "carbs": recipe.carbs, "fats": recipe.fats},
+        cooking_time_minutes=recipe.cooking_time_minutes,
+        oil_usage_tsp=recipe.oil_usage_tsp,
+        insulin_score_impact=recipe.insulin_score_impact,
+        external_links=links,
+    )
 
 
 def _get_or_create_daily_log(db: Session, user_id: int, log_date):
@@ -628,3 +646,25 @@ def llm_analyze(payload: LLMAnalyzeRequest, db: Session = Depends(get_db)):
     consumed_at = payload.consumed_at or datetime.utcnow()
     analysis = llm_service.analyze(db, user, profile, payload.text, consumed_at)
     return LLMAnalyzeResponse(**analysis)
+
+
+@router.get("/recipes", response_model=list[RecipeResponse])
+def list_recipes(db: Session = Depends(get_db)):
+    recipes = recipe_service.list_recipes(db)
+    return [_to_recipe_response(recipe) for recipe in recipes]
+
+
+@router.get("/recipes/suggestions", response_model=RecipeSuggestionResponse)
+def recipe_suggestions(user_id: int = Query(default=1), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = get_or_create_metabolic_profile(db, user)
+    carb_load_remaining, suggestion, recipes = recipe_service.suggest_recipes(db, user_id, profile)
+    return RecipeSuggestionResponse(
+        user_id=user_id,
+        carb_load_remaining=carb_load_remaining,
+        suggestion=suggestion,
+        recipes=[_to_recipe_response(recipe) for recipe in recipes],
+    )

@@ -42,6 +42,8 @@ Added:
 - `POST /import-apple-health`
 - `POST /external-event`
 - `POST /llm/analyze`
+- `GET /recipes`
+- `GET /recipes/suggestions`
 - `POST /whatsapp-message`
 - `POST /notification-event`
 - `GET /notification-settings`

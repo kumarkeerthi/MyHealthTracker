@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import DailyLog, FoodItem, MetabolicProfile, User
 from app.services.insulin_engine import calculate_insulin_load_score
+from app.services.recipe_service import recipe_service
 from app.services.rule_engine import validate_carb_limit, validate_fasting_window, validate_oil_limit
 
 
@@ -72,7 +73,15 @@ class LLMService:
             reasoning = " ".join(blocking_reasons)
         else:
             approval_status = "approved"
-            recommended_adjustment = self._build_recommendation(profile, total_carbs, total_oil, extracted)
+            recommended_adjustment = self._build_recommendation(
+                db,
+                user,
+                profile,
+                consumed_at,
+                total_carbs,
+                total_oil,
+                extracted,
+            )
             reasoning = extracted.get("reasoning") or "Food estimate processed and validated against profile rules."
 
         return {
@@ -88,7 +97,10 @@ class LLMService:
 
     def _build_recommendation(
         self,
+        db: Session,
+        user: User,
         profile: MetabolicProfile,
+        consumed_at: datetime,
         projected_carbs: float,
         projected_oil: float,
         extracted: dict[str, Any],
@@ -96,9 +108,14 @@ class LLMService:
         headroom_carbs = max(0.0, round(profile.carb_ceiling - projected_carbs, 2))
         headroom_oil = max(0.0, round(profile.oil_limit_tsp - projected_oil, 2))
         foods = ", ".join(extracted.get("food_items", [])) or "this item"
+        recipe_line = ""
+        _remaining, recipe_suggestion, _recipes = recipe_service.suggest_recipes(db, user.id, profile, consumed_at)
+        if recipe_suggestion:
+            recipe_line = f" {recipe_suggestion}"
+
         return (
             f"{foods}: keep portions conservative. Remaining allowance ≈ {headroom_carbs}g carbs "
-            f"and {headroom_oil} tsp hidden oil for today."
+            f"and {headroom_oil} tsp hidden oil for today.{recipe_line}"
         )
 
     def _from_cache(self, key: str) -> dict[str, Any] | None:
