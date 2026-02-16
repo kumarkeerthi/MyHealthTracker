@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta, time, date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.security import create_access_token, get_current_token_claims, llm_usage_limiter, require_admin, sanitize_text
+from app.core.security import RateLimitRule, SlidingWindowLimiter, get_current_token_claims, llm_usage_limiter, require_admin, sanitize_text
 from app.models import (
     ChallengeAssignment,
     ChallengeFrequency,
@@ -50,13 +50,18 @@ from app.schemas.schemas import (
     WeeklySummaryResponse,
     MetabolicAdvisorReportResponse,
     AnalyzeFoodImageResponse,
+    AuthTokenResponse,
     ConfirmFoodImageLogRequest,
     ConfirmFoodImageLogResponse,
+    LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     AdvancedAnalyticsResponse,
     HabitIntelligenceResponse,
     MetabolicPhasePerformanceResponse,
     MovementPanelResponse,
     MovementSettingsResponse,
+    TokenRefreshRequest,
     UpdateMovementSettingsRequest,
 )
 from app.services.apple_health_service import AppleHealthService
@@ -73,6 +78,7 @@ from app.services.analytics_engine import analytics_engine
 from app.services.habit_intelligence_engine import habit_intelligence_engine
 from app.services.metabolic_phase_service import metabolic_phase_service
 from app.services.movement_engine import movement_engine
+from app.services.auth_service import auth_service
 from app.services.rule_engine import (
     calculate_daily_macros,
     evaluate_daily_status,
@@ -92,11 +98,6 @@ from app.services.strength_engine import (
 from app.services.vitals_engine import calculate_vitals_risk_score
 
 router = APIRouter()
-
-
-def _is_admin_user(user_id: int) -> bool:
-    admin_ids = {int(x.strip()) for x in settings.admin_user_ids.split(",") if x.strip().isdigit()}
-    return user_id in admin_ids
 
 
 def _to_recipe_response(recipe: Recipe) -> RecipeResponse:
@@ -124,10 +125,47 @@ def _get_or_create_daily_log(db: Session, user_id: int, log_date):
     return daily_log
 
 
-@router.post("/auth/token")
-def issue_token(user_id: int = Query(...)):
-    token = create_access_token(user_id=user_id, is_admin=_is_admin_user(user_id))
-    return {"access_token": token, "token_type": "bearer", "expires_in_minutes": settings.jwt_expiration_minutes}
+login_rate_limiter = SlidingWindowLimiter()
+
+
+@router.post("/auth/login", response_model=AuthTokenResponse)
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    limit_rule = RateLimitRule(
+        limit=settings.login_rate_limit_attempts,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    )
+    if not login_rate_limiter.is_allowed(f"login:{client_ip}", limit_rule):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please retry later.")
+
+    token_bundle = auth_service.authenticate(db, payload.email, payload.password, client_ip)
+    return AuthTokenResponse(**token_bundle)
+
+
+@router.post("/auth/refresh", response_model=AuthTokenResponse)
+def refresh_token(payload: TokenRefreshRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    token_bundle = auth_service.rotate_refresh_token(db, payload.refresh_token, client_ip)
+    return AuthTokenResponse(**token_bundle)
+
+
+@router.post("/auth/logout")
+def logout(payload: TokenRefreshRequest, db: Session = Depends(get_db)):
+    auth_service.logout(db, payload.refresh_token)
+    return {"status": "ok"}
+
+
+@router.post("/auth/password-reset/request")
+def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    # TODO: send token over email provider; response intentionally generic.
+    reset_token = auth_service.request_password_reset(db, payload.email)
+    return {"status": "ok", "email_sent": bool(reset_token)}
+
+
+@router.post("/auth/password-reset/confirm")
+def confirm_password_reset(payload: PasswordResetConfirmRequest, db: Session = Depends(get_db)):
+    auth_service.confirm_password_reset(db, payload.token, payload.new_password)
+    return {"status": "ok"}
 
 
 @router.post("/log-food", response_model=LogFoodResponse)

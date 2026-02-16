@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.models import FoodItem, HabitChallengeType, HabitCheckin, HabitDefinition, MetabolicAgentState, MetabolicProfile, NotificationSettings, Recipe, User
 
 
@@ -146,6 +147,9 @@ HABIT_DEFINITIONS = [
 ]
 
 DEFAULT_USER = {
+    "email": "demo@myhealthtracker.local",
+    "hashed_password": hash_password("ChangeMe123!"),
+    "role": "admin",
     "age": 38,
     "sex": "Male",
     "triglycerides": 346,

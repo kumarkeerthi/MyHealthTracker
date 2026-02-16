@@ -1,5 +1,7 @@
 from app.models.models import (
     AgentRunCadence,
+    AuthLoginAttempt,
+    AuthRefreshToken,
     ChallengeAssignment,
     ChallengeFrequency,
     ChallengeStreak,
@@ -17,6 +19,7 @@ from app.models.models import (
     MetabolicRecommendationLog,
     MetabolicProfile,
     NotificationSettings,
+    PasswordResetToken,
     PendingRecommendation,
     PushSubscription,
     RecommendationStatus,
@@ -27,6 +30,9 @@ from app.models.models import (
 
 __all__ = [
     "User",
+    "AuthRefreshToken",
+    "AuthLoginAttempt",
+    "PasswordResetToken",
     "ChallengeFrequency",
     "ChallengeAssignment",
     "ChallengeStreak",
