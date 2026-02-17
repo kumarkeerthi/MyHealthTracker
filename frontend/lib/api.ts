@@ -249,7 +249,7 @@ export type MetabolicPhasePerformance = {
   };
 };
 
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
 async function readJson<T>(path: string): Promise<T | null> {
   try {
