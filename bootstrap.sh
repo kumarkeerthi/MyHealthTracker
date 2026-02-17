@@ -19,6 +19,12 @@ exec > >(tee -a "$BOOTSTRAP_LOG") 2>&1
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
+env_file_has_forbidden_interpolation() {
+  local file="$1"
+  [[ -f "$file" ]] || return 1
+  grep -qE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*\$\{' "$file"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --prod|--production)
@@ -247,11 +253,17 @@ main() {
 
   if [[ "$FORCE" -eq 1 || ! -f "$PROD_ENV_FILE" ]]; then
     write_env_file "$PROD_ENV_FILE" 'production' "$app_domain" "https://${app_domain}/api" "https://${app_domain}" "https://${app_domain}/uploads" 'true'
+  elif env_file_has_forbidden_interpolation "$PROD_ENV_FILE"; then
+    log '.env.production contains interpolation placeholders; regenerating to satisfy deploy validation.'
+    write_env_file "$PROD_ENV_FILE" 'production' "$app_domain" "https://${app_domain}/api" "https://${app_domain}" "https://${app_domain}/uploads" 'true'
   else
     log 'Keeping existing .env.production (pass --force to overwrite).'
   fi
 
   if [[ "$FORCE" -eq 1 || ! -f "$LOCAL_ENV_FILE" ]]; then
+    write_env_file "$LOCAL_ENV_FILE" 'local' 'localhost' 'http://localhost:8000' 'http://localhost:3000' 'http://localhost:8000/uploads' 'false'
+  elif env_file_has_forbidden_interpolation "$LOCAL_ENV_FILE"; then
+    log '.env.local contains interpolation placeholders; regenerating to satisfy deploy validation.'
     write_env_file "$LOCAL_ENV_FILE" 'local' 'localhost' 'http://localhost:8000' 'http://localhost:3000' 'http://localhost:8000/uploads' 'false'
   else
     log 'Keeping existing .env.local (pass --force to overwrite).'
