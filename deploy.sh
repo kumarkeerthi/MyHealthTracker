@@ -41,7 +41,7 @@ validate_env_file_format() {
   local name
   name="$(basename "$file")"
 
-  if grep -n '\${' "$file" >/dev/null; then
+  if grep -nE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*\$\{' "$file" >/dev/null; then
     die "${name} contains forbidden interpolation syntax"
   fi
 
