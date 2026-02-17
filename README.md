@@ -19,10 +19,13 @@ Clinical-grade metabolic intelligence backend built with FastAPI, SQLAlchemy, an
 - Docker / Docker Compose
 
 ## Run the full stack (recommended)
-Use the unified setup script:
+Use the unified one-click setup script:
 ```bash
 ./setup.sh
 ```
+
+This executes dependency install, configuration generation, and deployment automatically.
+Only `OPENAI_API_KEY` is prompted (unless already exported). Generated defaults are saved to `setup_reference.env`.
 
 API available at: `http://localhost:8000`  
 Frontend available at: `http://localhost:3000`
@@ -79,13 +82,14 @@ Implementation details and OpenClaw integration notes are documented in `docs/op
 ## Production deployment (Phase 11)
 Use the unified setup entry point:
 ```bash
-./setup.sh --production
+APP_DOMAIN=yourdomain.com ./setup.sh --prod
 ```
 
-(Equivalent advanced flow: `./bootstrap.sh` then `./deploy.sh`.)
+(Equivalent advanced flow: `./scripts/install_dependencies.sh --prod`, then `./bootstrap.sh --prod`, then `./deploy.sh --prod`.)
 
 Artifacts:
-- `deploy.sh` (interactive install + provisioning + rollback)
+- `scripts/install_dependencies.sh` (dependency installer)
+- `deploy.sh` (provisioning + deployment)
 - `update.sh` (rebuild/restart + health checks)
 - `uninstall.sh` (teardown)
 - `docs/production_deployment.md` (architecture diagram + operations)
