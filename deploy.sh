@@ -34,12 +34,21 @@ die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 log "Validating environment"
 "${PROJECT_DIR}/validate_env.sh" $([[ "$MODE" == "production" ]] && echo "--prod")
 
-set -a
-# shellcheck disable=SC1090
-source "$SECRETS_FILE"
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+load_env_file() {
+  local file="$1"
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ -n "$key" ]] || continue
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$file"
+}
+
+load_env_file "$SECRETS_FILE"
+load_env_file "$ENV_FILE"
 
 if [[ "$MODE" == "production" ]]; then
   [[ -f "${PROJECT_DIR}/nginx.conf.template" ]] || die "Missing nginx.conf.template"

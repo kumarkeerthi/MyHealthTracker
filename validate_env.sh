@@ -24,12 +24,21 @@ fail() { echo "[ERROR] $*" >&2; exit 1; }
 [[ -f "$SECRETS_FILE" ]] || fail "Missing generated_secrets.env; run ./bootstrap.sh"
 [[ -f "$ENV_FILE" ]] || fail "Missing $(basename "$ENV_FILE"); run ./bootstrap.sh"
 
-set -a
-# shellcheck disable=SC1090
-source "$SECRETS_FILE"
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+load_env_file() {
+  local file="$1"
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ -n "$key" ]] || continue
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$file"
+}
+
+load_env_file "$SECRETS_FILE"
+load_env_file "$ENV_FILE"
 
 required=(POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB REDIS_PASSWORD JWT_SECRET INTERNAL_API_KEY SESSION_SECRET VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY OPENAI_API_KEY)
 for key in "${required[@]}"; do
