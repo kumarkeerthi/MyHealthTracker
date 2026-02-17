@@ -5,40 +5,29 @@ set -Eeuo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PROJECT_DIR}/logs"
 DEPLOY_LOG="${LOG_DIR}/deploy.log"
+ENV_PROD_FILE="${PROJECT_DIR}/.env.production"
+ENV_LOCAL_FILE="${PROJECT_DIR}/.env.local"
 SECRETS_FILE="${PROJECT_DIR}/generated_secrets.env"
-MODE="local"
 COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
-ENV_FILE="${PROJECT_DIR}/.env.local"
 
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$DEPLOY_LOG") 2>&1
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --prod)
-      MODE="production"
-      COMPOSE_FILE="${PROJECT_DIR}/docker-compose.prod.yml"
-      ENV_FILE="${PROJECT_DIR}/.env.production"
-      ;;
-    *) echo "Unknown arg: $1" >&2; exit 1 ;;
-  esac
-  shift
-done
-
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
-[[ -f "$SECRETS_FILE" ]] || die "Missing generated_secrets.env"
-[[ -f "$ENV_FILE" ]] || die "Missing env file: $ENV_FILE"
-
-log "Validating environment"
-"${PROJECT_DIR}/validate_env.sh" $([[ "$MODE" == "production" ]] && echo "--prod")
+[[ -f "$SECRETS_FILE" ]] || die 'Missing generated_secrets.env. Run ./bootstrap.sh first.'
+[[ -f "$ENV_PROD_FILE" ]] || die 'Missing .env.production. Run ./bootstrap.sh first.'
+[[ -f "$ENV_LOCAL_FILE" ]] || die 'Missing .env.local. Run ./bootstrap.sh first.'
 
 load_env_file() {
   local file="$1"
-  local line key value
+  local line
+  local key
+  local value
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ -z "$line" ]] && continue
+    [[ "$line" == \#* ]] && continue
     key="${line%%=*}"
     value="${line#*=}"
     [[ -n "$key" ]] || continue
@@ -47,79 +36,101 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$SECRETS_FILE"
-load_env_file "$ENV_FILE"
+validate_env_file_format() {
+  local file="$1"
+  local name
+  name="$(basename "$file")"
 
-if [[ "$MODE" == "production" ]]; then
-  [[ -f "${PROJECT_DIR}/nginx.conf.template" ]] || die "Missing nginx.conf.template"
-  sed "s|__APP_DOMAIN__|${APP_DOMAIN}|g" "${PROJECT_DIR}/nginx.conf.template" > "${PROJECT_DIR}/deploy/nginx.conf"
-fi
-
-ensure_admin_credentials() {
-  if grep -q '^ADMIN_EMAIL=' "$SECRETS_FILE" && grep -q '^ADMIN_PASSWORD=' "$SECRETS_FILE"; then
-    ADMIN_EMAIL="$(awk -F= '/^ADMIN_EMAIL=/{print $2}' "$SECRETS_FILE" | tail -1)"
-    ADMIN_PASSWORD="$(awk -F= '/^ADMIN_PASSWORD=/{print $2}' "$SECRETS_FILE" | tail -1)"
-    return
+  if grep -n '\${' "$file" >/dev/null; then
+    die "${name} contains forbidden interpolation syntax"
   fi
 
-  ADMIN_EMAIL="admin@local"
-  ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 16)"
+  if grep -nE '^[A-Za-z_][A-Za-z0-9_]*=$' "$file" >/dev/null; then
+    die "${name} contains empty variables"
+  fi
 
-  tmp="$(mktemp)"
-  awk -F= '!/^ADMIN_EMAIL=|^ADMIN_PASSWORD=|^ADMIN_PASSWORD_HASH=/' "$SECRETS_FILE" > "$tmp"
-  {
-    echo "ADMIN_EMAIL=${ADMIN_EMAIL}"
-    echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}"
-  } >> "$tmp"
-  mv "$tmp" "$SECRETS_FILE"
-  chmod 600 "$SECRETS_FILE"
+  if grep -nE '^[A-Za-z_][A-Za-z0-9_]*=.*[[:space:]]+$' "$file" >/dev/null; then
+    die "${name} contains trailing spaces"
+  fi
 }
 
-ensure_admin_credentials
-export ADMIN_EMAIL ADMIN_PASSWORD
+log 'Running pre-deploy validation'
+validate_env_file_format "$SECRETS_FILE"
+validate_env_file_format "$ENV_PROD_FILE"
+validate_env_file_format "$ENV_LOCAL_FILE"
 
-log "Building images"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" build
+load_env_file "$ENV_PROD_FILE"
 
-log "Starting data services"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" up -d db redis
+required_vars=(
+  POSTGRES_USER
+  POSTGRES_PASSWORD
+  POSTGRES_DB
+  REDIS_PASSWORD
+  JWT_SECRET
+  INTERNAL_API_KEY
+  SESSION_SECRET
+  VAPID_PUBLIC_KEY
+  VAPID_PRIVATE_KEY
+  OPENAI_API_KEY
+  ADMIN_EMAIL
+  ADMIN_PASSWORD
+)
 
-until docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
+for key in "${required_vars[@]}"; do
+  value="${!key}"
+  if [[ -z "$value" ]]; then
+    die "Required variable is empty: ${key}"
+  fi
+  if [[ "$value" == *'{'* ]]; then
+    die "Variable ${key} contains forbidden brace characters"
+  fi
+  if [[ "$value" == *'}'* ]]; then
+    die "Variable ${key} contains forbidden brace characters"
+  fi
+done
+
+if [[ "$POSTGRES_USER" == *'${POSTGRES_USER}'* ]]; then
+  die 'POSTGRES_USER is a literal placeholder value'
+fi
+
+if [[ "$OPENAI_API_KEY" != sk-* ]]; then
+  die 'OPENAI_API_KEY must start with sk-'
+fi
+
+if [[ ${#OPENAI_API_KEY} -lt 40 ]]; then
+  die 'OPENAI_API_KEY is too short'
+fi
+
+log 'Validation passed'
+
+if ! docker info >/dev/null 2>&1; then
+  die 'Docker daemon is not running'
+fi
+
+log 'Building images'
+docker compose -f "$COMPOSE_FILE" build
+
+log 'Starting core services'
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans db redis
+
+log 'Waiting for PostgreSQL readiness'
+until docker compose -f "$COMPOSE_FILE" exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
   sleep 2
 done
 
-log "Synchronizing PostgreSQL role/database credentials"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db \
-  psql -v ON_ERROR_STOP=1 \
-  -v db_user="$POSTGRES_USER" \
-  -v db_password="$POSTGRES_PASSWORD" \
-  -v db_name="$POSTGRES_DB" \
-  -U "$POSTGRES_USER" \
-  --dbname=postgres <<'SQL'
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password');
-  ELSE
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'db_user', :'db_password');
-  END IF;
-END
-\$\$;
+log 'Running migrations'
+docker compose -f "$COMPOSE_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'CREATE TABLE IF NOT EXISTS schema_migrations (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());' >/dev/null
+for migration in "${PROJECT_DIR}"/migrations/*.sql; do
+  fname="$(basename "$migration")"
+  if docker compose -f "$COMPOSE_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1 FROM schema_migrations WHERE filename='${fname}'" | grep -q 1; then
+    continue
+  fi
+  cat "$migration" | docker compose -f "$COMPOSE_FILE" exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+  docker compose -f "$COMPOSE_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "INSERT INTO schema_migrations(filename) VALUES ('${fname}') ON CONFLICT DO NOTHING;" >/dev/null
+done
 
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') THEN
-    EXECUTE format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_user');
-  END IF;
-END
-\$\$;
-
-SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user') \gexec
-SELECT format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'db_user') \gexec
-SQL
-
-log "Bootstrapping base schema"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" run --rm backend python - <<'PY'
+log 'Bootstrapping base schema'
+docker compose -f "$COMPOSE_FILE" run --rm backend python - <<'PY'
 from app.db.base import Base
 from app.db.session import engine
 import app.models.models  # noqa: F401
@@ -127,29 +138,18 @@ import app.models.models  # noqa: F401
 Base.metadata.create_all(bind=engine)
 PY
 
-log "Running migrations"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE TABLE IF NOT EXISTS schema_migrations (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());" >/dev/null
-for migration in "${PROJECT_DIR}"/migrations/*.sql; do
-  fname="$(basename "$migration")"
-  if docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1 FROM schema_migrations WHERE filename='${fname}'" | grep -q 1; then
-    continue
-  fi
-  cat "$migration" | docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-  docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "INSERT INTO schema_migrations(filename) VALUES ('${fname}') ON CONFLICT DO NOTHING;" >/dev/null
-done
+log 'Starting full stack'
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
-log "Starting app services"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" up -d
-
-log "Seeding admin user"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T backend python - <<'PY'
+log 'Seeding admin user'
+docker compose -f "$COMPOSE_FILE" exec -T backend python - <<'PY'
 import os
+from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.models import User
 
 email = os.environ['ADMIN_EMAIL']
 password = os.environ['ADMIN_PASSWORD']
-from app.core.security import hash_password
 hashed = hash_password(password)
 
 db = SessionLocal()
@@ -176,18 +176,12 @@ finally:
     db.close()
 PY
 
-cat <<MSG
---------------------------------------------
-Metabolic OS Setup Complete
---------------------------------------------
-Mode: ${MODE^^}
-URL: $([[ "$MODE" == "production" ]] && echo "https://${APP_DOMAIN}" || echo "http://localhost:3000")
-
-Admin Login:
-Email: ${ADMIN_EMAIL}
-Password: ${ADMIN_PASSWORD}
-
-Secrets saved in:
-${SECRETS_FILE}
---------------------------------------------
-MSG
+printf '%s\n' '--------------------------------------------'
+printf '%s\n' 'Metabolic OS Setup Complete'
+printf '%s\n' '--------------------------------------------'
+printf 'URL: %s\n' 'http://localhost:3000'
+printf '%s\n' ''
+printf '%s\n' 'Admin Login:'
+printf 'Email: %s\n' "$ADMIN_EMAIL"
+printf 'Password: %s\n' "$ADMIN_PASSWORD"
+printf '%s\n' '--------------------------------------------'
