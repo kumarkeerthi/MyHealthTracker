@@ -91,31 +91,39 @@ docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FI
 log "Starting data services"
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" up -d db redis
 
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done'
+until docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; do
+  sleep 2
+done
 
 log "Synchronizing PostgreSQL role/database credentials"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" --dbname=postgres <<SQL
+docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db \
+  psql -v ON_ERROR_STOP=1 \
+  -v db_user="$POSTGRES_USER" \
+  -v db_password="$POSTGRES_PASSWORD" \
+  -v db_name="$POSTGRES_DB" \
+  -U "$POSTGRES_USER" \
+  --dbname=postgres <<'SQL'
 DO \$\$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''${POSTGRES_USER}'\'') THEN
-    EXECUTE format('\''CREATE ROLE %I LOGIN PASSWORD %L'\'', '\''${POSTGRES_USER}'\'', '\''${POSTGRES_PASSWORD}'\'');
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password');
   ELSE
-    EXECUTE format('\''ALTER ROLE %I WITH LOGIN PASSWORD %L'\'', '\''${POSTGRES_USER}'\'', '\''${POSTGRES_PASSWORD}'\'');
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'db_user', :'db_password');
   END IF;
 END
 \$\$;
 
 DO \$\$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '\''${POSTGRES_DB}'\'') THEN
-    EXECUTE format('\''CREATE DATABASE %I OWNER %I'\'', '\''${POSTGRES_DB}'\'', '\''${POSTGRES_USER}'\'');
+  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') THEN
+    EXECUTE format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_user');
   END IF;
 END
 \$\$;
 
-ALTER DATABASE "${POSTGRES_DB}" OWNER TO "${POSTGRES_USER}";
-GRANT ALL PRIVILEGES ON DATABASE "${POSTGRES_DB}" TO "${POSTGRES_USER}";
-SQL'
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user') \gexec
+SELECT format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'db_user') \gexec
+SQL
 
 log "Bootstrapping base schema"
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" run --rm backend python - <<'PY'
