@@ -116,12 +116,12 @@ EOF_DONE
 run_production_setup() {
   require_cmd bash
   log "Starting production setup (interactive)."
-  log "This runs bootstrap.sh first, then deploy.sh."
+  log "This runs bootstrap.sh --prod first, then deploy.sh --prod."
 
   (
     cd "$PROJECT_DIR"
-    ./bootstrap.sh
-    ./deploy.sh
+    ./bootstrap.sh --prod
+    ./deploy.sh --prod
   )
 }
 
