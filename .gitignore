@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 .env
+.env.local
+.env.production
+generated_secrets.env
+logs/
 
 # Next.js frontend
 frontend/node_modules/

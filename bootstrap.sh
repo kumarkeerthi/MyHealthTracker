@@ -3,193 +3,192 @@
 set -Eeuo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "${PROJECT_DIR}/deploy/lib.sh"
+LOG_DIR="${PROJECT_DIR}/logs"
+BOOTSTRAP_LOG="${LOG_DIR}/bootstrap.log"
+SECRETS_FILE="${PROJECT_DIR}/generated_secrets.env"
+LOCAL_TEMPLATE="${PROJECT_DIR}/.env.local.template"
+PROD_TEMPLATE="${PROJECT_DIR}/.env.production.template"
+MODE="local"
+FORCE=0
+REGEN_SECRETS=0
 
+mkdir -p "$LOG_DIR"
 exec > >(tee -a "$BOOTSTRAP_LOG") 2>&1
 
-install_dependencies() {
-  require_cmd apt-get
-  apt-get update
-  apt_install_missing curl git openssl nginx ufw ca-certificates gnupg lsb-release python3 python3-bcrypt
+log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+warn() { printf '[WARN] %s\n' "$*"; }
+die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
-  if ! command -v docker >/dev/null 2>&1; then
-    log "Installing Docker Engine + Compose plugin"
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    # shellcheck disable=SC1091
-    source /etc/os-release
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
-      | tee /etc/apt/sources.list.d/docker.list >/dev/null
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  else
-    apt_install_missing docker-compose-plugin
+usage() {
+  cat <<USAGE
+Usage: ./bootstrap.sh [--prod] [--force] [--regen-secrets]
+  --prod            Generate production env (.env.production)
+  --force           Overwrite existing target env file
+  --regen-secrets   Regenerate generated_secrets.env
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --prod) MODE="production" ;;
+    --force) FORCE=1 ;;
+    --regen-secrets) REGEN_SECRETS=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown argument: $1" ;;
+  esac
+  shift
+done
+
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+ensure_package() {
+  local cmd="$1" pkg="$2"
+  if command_exists "$cmd"; then
+    return 0
+  fi
+  if command_exists apt-get; then
+    log "Installing missing dependency: ${pkg}"
+    apt-get update -y >/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" >/dev/null
+  fi
+  command_exists "$cmd" || die "Missing dependency: ${cmd}"
+}
+
+install_dependencies() {
+  ensure_package curl curl
+  ensure_package openssl openssl
+  ensure_package docker docker.io
+
+  if ! docker compose version >/dev/null 2>&1; then
+    if command_exists apt-get; then
+      log "Installing docker compose plugin"
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null
+    fi
+    docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is required"
   fi
 
-  systemctl enable --now docker
+  if [[ "$MODE" == "production" ]]; then
+    ensure_package nginx nginx
+  fi
 }
 
-create_required_directories() {
-  mkdir -p /data/postgres /data/uploads /backups /logs
-  chmod 755 /data /data/postgres /data/uploads /backups /logs
+random_hex_32() {
+  openssl rand -hex 32
 }
 
-prompt_default() {
-  local prompt="$1"
-  local default_value="$2"
-  local out
-  read -rp "$prompt" out
-  printf "%s" "${out:-$default_value}"
+upsert_secret() {
+  local key="$1" value="$2"
+  local tmp
+  tmp="$(mktemp)"
+  if [[ -f "$SECRETS_FILE" ]]; then
+    awk -F= -v k="$key" '$1!=k {print}' "$SECRETS_FILE" > "$tmp"
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  mv "$tmp" "$SECRETS_FILE"
 }
 
-prompt_non_empty() {
-  local prompt="$1"
-  local out
-  while true; do
-    read -rp "$prompt" out
-    if [[ -n "$out" ]]; then
-      printf "%s" "$out"
-      return
-    fi
-    warn "This value is required."
-  done
+generate_secrets_file() {
+  if [[ -f "$SECRETS_FILE" && "$REGEN_SECRETS" -eq 0 ]]; then
+    log "Reusing existing generated secrets: ${SECRETS_FILE}"
+    return
+  fi
+
+  log "Generating deterministic secret file: ${SECRETS_FILE}"
+  cat > "$SECRETS_FILE" <<EOF_SECRETS
+POSTGRES_USER=metabolic_user
+POSTGRES_PASSWORD=$(random_hex_32)
+POSTGRES_DB=metabolic_db
+REDIS_PASSWORD=$(random_hex_32)
+JWT_SECRET=$(random_hex_32)
+INTERNAL_API_KEY=$(random_hex_32)
+SESSION_SECRET=$(random_hex_32)
+VAPID_PUBLIC_KEY=$(random_hex_32)
+VAPID_PRIVATE_KEY=$(random_hex_32)
+EOF_SECRETS
+  chmod 600 "$SECRETS_FILE"
 }
 
 prompt_openai_key() {
   local key
   while true; do
     cat <<'MSG'
-Enter your OpenAI API key.
-To retrieve:
-1. Go to https://platform.openai.com
-2. Click API Keys
+--------------------------------------------
+To retrieve OpenAI API Key:
+1. Visit https://platform.openai.com
+2. Click "API Keys"
 3. Create new secret key
-4. Paste here
+4. Paste it here
+--------------------------------------------
 MSG
     read -rsp "OPENAI_API_KEY: " key
     echo
-    if [[ "$key" == sk-* ]]; then
-      printf "%s" "$key"
-      return
+    if [[ "$key" == sk-* && ${#key} -ge 40 ]]; then
+      printf '%s' "$key"
+      return 0
     fi
-    warn "Invalid key format. OPENAI_API_KEY must start with sk-."
+    warn "Invalid key. It must start with 'sk-' and be at least 40 characters."
   done
 }
 
-prompt_admin_password_hash() {
-  local password confirm hash
-  while true; do
-    read -rsp "Create admin password: " password
-    echo
-    read -rsp "Confirm admin password: " confirm
-    echo
-    [[ -n "$password" ]] || { warn "Admin password cannot be empty."; continue; }
-    [[ "$password" == "$confirm" ]] || { warn "Passwords do not match."; continue; }
-    hash="$(python3 - <<'PY' "$password"
-import bcrypt, sys
-pwd = sys.argv[1].encode("utf-8")
-print(bcrypt.hashpw(pwd, bcrypt.gensalt(rounds=12)).decode("utf-8"))
-PY
-)"
-    printf "%s" "$hash"
-    return
-  done
-}
+render_env_file() {
+  local target_file template_file openai_key app_domain
+  if [[ "$MODE" == "production" ]]; then
+    target_file="${PROJECT_DIR}/.env.production"
+    template_file="$PROD_TEMPLATE"
+  else
+    target_file="${PROJECT_DIR}/.env.local"
+    template_file="$LOCAL_TEMPLATE"
+  fi
 
-generate_vapid_keys() {
-  local private_key public_key
-  private_key="$(random_base64 32)"
-  public_key="$(random_base64 32)"
-  printf "%s;%s" "$public_key" "$private_key"
-}
+  [[ -f "$template_file" ]] || die "Missing template: $template_file"
 
-write_env_file() {
-  local postgres_db postgres_user postgres_password openai_api_key app_domain
-  local cors_allowed_origins api_base_url jwt_secret redis_password admin_email admin_password_hash
-  local vapid_public_key vapid_private_key vapid_subject
+  if [[ -f "$target_file" && "$FORCE" -eq 0 ]]; then
+    log "Skipping existing ${target_file} (use --force to overwrite)"
+    return 0
+  fi
 
-  postgres_db="$(prompt_default 'Enter database name (default: metabolic_db): ' 'metabolic_db')"
-  postgres_user="$(prompt_default 'Enter database username (default: metabolic_user): ' 'metabolic_user')"
-  postgres_password="$(random_hex 32)"
-  openai_api_key="$(prompt_openai_key)"
-  app_domain="$(prompt_non_empty 'Enter your domain (example: app.yourdomain.com): ')"
-  admin_email="$(prompt_non_empty 'Create admin email: ')"
-  admin_password_hash="$(prompt_admin_password_hash)"
+  openai_key="$(prompt_openai_key)"
+  app_domain="localhost"
+  if [[ "$MODE" == "production" ]]; then
+    read -rp "APP_DOMAIN (example: yourdomain.com): " app_domain
+    [[ -n "$app_domain" ]] || die "APP_DOMAIN is required in production mode"
+  fi
 
-  cors_allowed_origins="https://${app_domain}"
-  api_base_url="https://${app_domain}/api"
-  jwt_secret="$(random_hex 64)"
-  redis_password="$(random_hex 32)"
-  vapid_subject="mailto:${admin_email}"
+  local tmp
+  tmp="$(mktemp)"
+  sed -e "s|__OPENAI_API_KEY__|${openai_key}|g" -e "s|__APP_DOMAIN__|${app_domain}|g" "$template_file" > "$tmp"
+  [[ -s "$tmp" ]] || die "Generated env file is empty"
+  if rg -n 'CHANGEME|=$' "$tmp" >/dev/null; then
+    rm -f "$tmp"
+    die "Refusing to write ${target_file}; contains placeholders or blank values"
+  fi
 
-  IFS=';' read -r vapid_public_key vapid_private_key <<<"$(generate_vapid_keys)"
-
-  cat > "$ENV_FILE" <<EOF_ENV
-ENVIRONMENT=production
-APP_DOMAIN=${app_domain}
-DOMAIN=${app_domain}
-POSTGRES_DB=${postgres_db:-metabolic_db}
-POSTGRES_USER=${postgres_user:-metabolic_user}
-POSTGRES_PASSWORD=${postgres_password}
-DATABASE_URL=postgresql+psycopg2://${postgres_user:-metabolic_user}:${postgres_password}@db:5432/${postgres_db:-metabolic_db}
-REDIS_PASSWORD=${redis_password}
-REDIS_URL=redis://:${redis_password}@redis:6379/0
-CELERY_BROKER_URL=redis://:${redis_password}@redis:6379/0
-CELERY_RESULT_BACKEND=redis://:${redis_password}@redis:6379/0
-OPENAI_API_KEY=${openai_api_key}
-OPENAI_MODEL=gpt-4o-mini
-CORS_ALLOWED_ORIGINS=${cors_allowed_origins:-https://${app_domain}}
-NEXT_PUBLIC_API_BASE_URL=${api_base_url}
-JWT_SECRET=${jwt_secret}
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_MINUTES=60
-REQUIRE_HTTPS=true
-VAPID_PUBLIC_KEY=${vapid_public_key}
-VAPID_PRIVATE_KEY=${vapid_private_key}
-VAPID_SUBJECT=${vapid_subject}
-ADMIN_EMAIL=${admin_email}
-ADMIN_PASSWORD_HASH=${admin_password_hash}
-LOG_LEVEL=INFO
-LOG_DIR=/logs
-MAX_FOOD_IMAGE_BYTES=5000000
-FOOD_IMAGE_UPLOAD_DIR=/data/uploads
-FOOD_IMAGE_PUBLIC_BASE_URL=https://${app_domain}/uploads
-EOF_ENV
-
-  chmod 600 "$ENV_FILE"
-  log "Wrote ${ENV_FILE}"
-}
-
-validate_bootstrap_output() {
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-
-  validate_required_env POSTGRES_DB POSTGRES_USER CORS_ALLOWED_ORIGINS NEXT_PUBLIC_API_BASE_URL OPENAI_API_KEY APP_DOMAIN JWT_SECRET REDIS_PASSWORD ADMIN_EMAIL ADMIN_PASSWORD_HASH
-  validate_openai_key
-  validate_domain_points_here "$APP_DOMAIN"
-  validate_ports_available
-  validate_docker_running
+  mv "$tmp" "$target_file"
+  chmod 600 "$target_file"
+  log "Wrote ${target_file}"
 }
 
 main() {
-  ensure_logs_dir
-  ensure_root_or_sudo "$@"
-
-  if ! os_is_ubuntu_compatible; then
-    warn "Non-Ubuntu OS detected. Continuing, but this bootstrap is tuned for Ubuntu 20.04+."
-  elif ! os_version_supported; then
-    warn "Ubuntu version appears below 20.04. Continuing, but compatibility is not guaranteed."
-  fi
-
-  log "Starting bootstrap. Logs: ${BOOTSTRAP_LOG}"
+  log "Starting bootstrap in ${MODE^^} mode"
   install_dependencies
-  create_required_directories
-  write_env_file
-  validate_bootstrap_output
+  generate_secrets_file
+  render_env_file
 
-  log "Bootstrap complete. Next step: ./deploy.sh"
+  cat <<MSG
+--------------------------------------------
+Metabolic OS Setup Complete
+--------------------------------------------
+Mode: ${MODE^^}
+URL: $([[ "$MODE" == "production" ]] && echo "https://yourdomain.com" || echo "http://localhost:3000")
+
+Admin Login:
+Email: admin@local
+Password: ********
+
+Secrets saved in:
+${SECRETS_FILE}
+--------------------------------------------
+MSG
 }
 
 main "$@"
