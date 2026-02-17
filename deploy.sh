@@ -85,7 +85,7 @@ docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FI
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done'
 
 log "Synchronizing PostgreSQL role/database credentials"
-docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'su postgres -c "psql -v ON_ERROR_STOP=1 --dbname=postgres <<SQL
+docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" --dbname=postgres <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '\''${POSTGRES_USER}'\'') THEN
@@ -106,7 +106,7 @@ END
 
 ALTER DATABASE \"${POSTGRES_DB}\" OWNER TO \"${POSTGRES_USER}\";
 GRANT ALL PRIVILEGES ON DATABASE \"${POSTGRES_DB}\" TO \"${POSTGRES_USER}\";
-SQL"'
+SQL'
 
 log "Bootstrapping base schema"
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" run --rm backend python - <<'PY'
