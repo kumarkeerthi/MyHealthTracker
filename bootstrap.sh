@@ -6,6 +6,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${PROJECT_DIR}/logs"
 BOOTSTRAP_LOG="${LOG_DIR}/bootstrap.log"
 SECRETS_FILE="${PROJECT_DIR}/generated_secrets.env"
+REFERENCE_FILE="${PROJECT_DIR}/setup_reference.env"
 LOCAL_TEMPLATE="${PROJECT_DIR}/.env.local.template"
 PROD_TEMPLATE="${PROJECT_DIR}/.env.production.template"
 MODE="local"
@@ -130,6 +131,18 @@ MSG
   done
 }
 
+resolve_openai_key() {
+  if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    if [[ "$OPENAI_API_KEY" == sk-* && ${#OPENAI_API_KEY} -ge 40 ]]; then
+      printf '%s' "$OPENAI_API_KEY"
+      return 0
+    fi
+    die "OPENAI_API_KEY was provided but is invalid"
+  fi
+
+  prompt_openai_key
+}
+
 render_env_file() {
   local target_file template_file openai_key app_domain
   if [[ "$MODE" == "production" ]]; then
@@ -147,12 +160,8 @@ render_env_file() {
     return 0
   fi
 
-  openai_key="$(prompt_openai_key)"
-  app_domain="localhost"
-  if [[ "$MODE" == "production" ]]; then
-    read -rp "APP_DOMAIN (example: yourdomain.com): " app_domain
-    [[ -n "$app_domain" ]] || die "APP_DOMAIN is required in production mode"
-  fi
+  openai_key="$(resolve_openai_key)"
+  app_domain="${APP_DOMAIN:-localhost}"
 
   local tmp
   tmp="$(mktemp)"
@@ -168,11 +177,35 @@ render_env_file() {
   log "Wrote ${target_file}"
 }
 
+write_reference_file() {
+  local env_file
+  env_file="${PROJECT_DIR}/.env.local"
+  if [[ "$MODE" == "production" ]]; then
+    env_file="${PROJECT_DIR}/.env.production"
+  fi
+
+  [[ -f "$SECRETS_FILE" ]] || die "Missing secrets file while generating reference"
+  [[ -f "$env_file" ]] || die "Missing env file while generating reference"
+
+  {
+    echo "# Auto-generated setup reference"
+    echo "# Contains generated defaults and secrets used by setup"
+    echo "# Mode: ${MODE}"
+    echo
+    cat "$SECRETS_FILE"
+    echo
+    cat "$env_file"
+  } > "$REFERENCE_FILE"
+  chmod 600 "$REFERENCE_FILE"
+  log "Wrote setup reference: ${REFERENCE_FILE}"
+}
+
 main() {
   log "Starting bootstrap in ${MODE^^} mode"
   install_dependencies
   generate_secrets_file
   render_env_file
+  write_reference_file
 
   cat <<MSG
 --------------------------------------------
@@ -187,6 +220,9 @@ Password: ********
 
 Secrets saved in:
 ${SECRETS_FILE}
+
+Full setup reference saved in:
+${REFERENCE_FILE}
 --------------------------------------------
 MSG
 }
