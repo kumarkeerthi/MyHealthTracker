@@ -5,29 +5,27 @@ services:
     image: postgres:16
     restart: unless-stopped
     env_file:
-      - generated_secrets.env
-      - .env.local
+      - .env.production
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
       interval: 10s
       timeout: 5s
-      retries: 8
+      retries: 10
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     env_file:
-      - generated_secrets.env
-      - .env.local
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+      - .env.production
+    command: ['sh', '-c', 'exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"']
     ports:
       - '6379:6379'
 
@@ -37,8 +35,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - generated_secrets.env
-      - .env.local
+      - .env.production
     ports:
       - '8000:8000'
     depends_on:
@@ -57,9 +54,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - generated_secrets.env
-      - .env.local
-    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+      - .env.production
+    command: ['celery', '-A', 'app.celery_app.celery_app', 'worker', '--loglevel=INFO', '--concurrency=2']
     depends_on:
       db:
         condition: service_healthy
@@ -70,13 +66,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     restart: unless-stopped
     env_file:
-      - .env.local
+      - .env.production
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      - NEXT_PUBLIC_API_BASE_URL
     ports:
       - '3000:3000'
     depends_on:
