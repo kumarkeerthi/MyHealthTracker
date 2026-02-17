@@ -111,7 +111,7 @@ EOF_SECRETS
 prompt_openai_key() {
   local key
   while true; do
-    cat <<'MSG'
+    cat <<'MSG' >&2
 --------------------------------------------
 To retrieve OpenAI API Key:
 1. Visit https://platform.openai.com
@@ -121,12 +121,12 @@ To retrieve OpenAI API Key:
 --------------------------------------------
 MSG
     read -rsp "OPENAI_API_KEY: " key
-    echo
+    echo >&2
     if [[ "$key" == sk-* && ${#key} -ge 40 ]]; then
       printf '%s' "$key"
       return 0
     fi
-    warn "Invalid key. It must start with 'sk-' and be at least 40 characters."
+    warn "Invalid key. It must start with 'sk-' and be at least 40 characters." >&2
   done
 }
 
