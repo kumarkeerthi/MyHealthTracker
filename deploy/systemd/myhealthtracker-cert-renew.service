@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew Let's Encrypt certificates for MyHealthTracker
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=/usr/bin/certbot renew --quiet \
+  --pre-hook '__PROJECT_DIR__/deploy/certbot-hooks/pre-hook.sh' \
+  --post-hook '__PROJECT_DIR__/deploy/certbot-hooks/post-hook.sh' \
+  --deploy-hook '__PROJECT_DIR__/deploy/certbot-hooks/deploy-hook.sh'

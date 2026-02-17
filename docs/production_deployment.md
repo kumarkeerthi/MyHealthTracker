@@ -1,59 +1,92 @@
-# Production Deployment Guide
+# Production Deployment Guide (Ubuntu 22.04+)
 
-## Artifacts
-- `deploy.sh`: interactive first-time production installer.
-- `update.sh`: rolling update utility.
-- `uninstall.sh`: removes deployed stack and generated runtime assets.
-- `docker-compose.prod.yml`: production service topology.
+## What was wrong in the original setup
 
-## System architecture diagram
+- `docker-compose.prod.yml` used mixed env-file patterns (`generated_secrets.env` + `.env.production`) that made production drift-prone.
+- Nginx TLS config depended on existing cert files at first boot; this can crash Nginx before cert issuance.
+- Certbot lifecycle was incomplete (no robust pre/post/deploy hooks and no guaranteed scheduler).
+- Update workflow had limited rollback context and weak health validation.
+- DNS validation and deployment preflight checks were not centralized for a reliable production bootstrap.
 
-```mermaid
-flowchart TD
-    U[Users] -->|HTTPS 443| N[Nginx Reverse Proxy]
-    N -->|/| F[Frontend Next.js]
-    N -->|/api| B[FastAPI Backend]
-    B --> P[(PostgreSQL Volume)]
-    B --> R[(Redis)]
-    C[Celery Worker] --> R
-    C --> P
-    L[Let's Encrypt / Certbot] --> N
-```
+## What was fixed
 
-## First-time deployment
+- Added strict, step-logged production installer in `setup.sh` with:
+  - Docker daemon startup checks.
+  - Compose v2 validation.
+  - DNS resolution check against server public IP.
+  - Two-phase Nginx bootstrap (HTTP-only -> TLS config).
+  - Automated cert issuance with Certbot hooks.
+  - systemd timer installation for renewal.
+- Reworked `docker-compose.prod.yml` to current Compose v2 style (no `version:`), clearer health checks, and corrected certificate volume mounts.
+- Added certbot hooks:
+  - `deploy/certbot-hooks/pre-hook.sh` (stop nginx)
+  - `deploy/certbot-hooks/post-hook.sh` (restart nginx)
+  - `deploy/certbot-hooks/deploy-hook.sh` (sync certs + reload nginx)
+- Added `rollback.sh` for commit-based rollback.
+- Added `scripts/deployment_dry_run.sh` for non-destructive validation.
+- Added `.env.production.example` with required production keys.
+
+## Why these fixes were required (technical rationale)
+
+- Nginx cannot load TLS blocks without certificate files; using a temporary HTTP config prevents first-run deadlock.
+- Certbot standalone needs exclusive access to port 80; stopping Nginx in hooks avoids intermittent challenge failures.
+- systemd timer provides deterministic, host-level renewal independent of container uptime.
+- Explicit health checks and update snapshots reduce MTTR during regressions.
+
+## First install and deployment
 
 ```bash
-chmod +x deploy.sh update.sh uninstall.sh
-./deploy.sh
+cp .env.production.example .env.production
+# edit .env.production with real values
+
+chmod +x setup.sh update.sh rollback.sh scripts/deployment_dry_run.sh
+./setup.sh --production
 ```
 
-The script performs:
-1. OS detection and package installation (Docker, Compose, Git, Nginx, Certbot, UFW).
-2. Environment validation (ports, DNS, Docker status, memory).
-3. Interactive prompts for critical production inputs.
-4. Auto generation of `.env`, Docker secrets, and random credentials.
-5. SSL provisioning and firewall hardening.
-6. Container bootstrap and post-deploy verification.
-7. Rollback to previous state when any critical step fails.
-
-## Updating
+## Update deployment
 
 ```bash
 ./update.sh
 ```
 
-This rebuilds/restarts the stack and verifies frontend, backend health, and database connectivity.
+## Add a new domain
 
-## Uninstall
+1. Update DNS A/AAAA to this server.
+2. Set `DOMAIN` and `APP_DOMAIN` in `.env.production`.
+3. Re-run setup:
 
 ```bash
-./uninstall.sh
+./setup.sh --production
 ```
 
-Stops containers, removes volumes, and optionally deletes runtime assets (`.env`, secrets, SSL artifacts).
+## Rollback
 
-## Operational recommendations
-- Put `.env` and `deploy/secrets/*` into a secret manager after deployment.
-- Schedule DB snapshots for volume `postgres_data`.
-- Enable log shipping and uptime monitoring.
-- Rotate OpenAI, Redis, DB, and JWT secrets quarterly.
+```bash
+./rollback.sh <git-tag-or-commit>
+```
+
+## Monitor SSL renewal
+
+```bash
+systemctl status myhealthtracker-cert-renew.timer
+journalctl -u myhealthtracker-cert-renew.service -n 100 --no-pager
+sudo certbot renew --dry-run
+```
+
+## DNS verification commands
+
+```bash
+nslookup YOUR_DOMAIN
+getent ahosts YOUR_DOMAIN
+curl -4 ifconfig.me
+```
+
+## Validation checklist
+
+```bash
+./scripts/deployment_dry_run.sh
+curl -I http://YOUR_DOMAIN
+curl -I https://YOUR_DOMAIN
+curl -kfsS https://YOUR_DOMAIN/health
+docker compose -f docker-compose.prod.yml --env-file .env.production ps
+```
