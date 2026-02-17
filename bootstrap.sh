@@ -163,13 +163,19 @@ render_env_file() {
   openai_key="$(resolve_openai_key)"
   app_domain="${APP_DOMAIN:-localhost}"
 
+  # Load generated deterministic secrets so template variables expand to concrete values.
+  set -a
+  # shellcheck disable=SC1090
+  source "$SECRETS_FILE"
+  set +a
+
   local tmp
   tmp="$(mktemp)"
-  sed -e "s|__OPENAI_API_KEY__|${openai_key}|g" -e "s|__APP_DOMAIN__|${app_domain}|g" "$template_file" > "$tmp"
+  OPENAI_API_KEY="$openai_key" APP_DOMAIN="$app_domain" envsubst < "$template_file" > "$tmp"
   [[ -s "$tmp" ]] || die "Generated env file is empty"
-  if rg -n 'CHANGEME|=$' "$tmp" >/dev/null; then
+  if rg -n 'CHANGEME|=$|\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$tmp" >/dev/null; then
     rm -f "$tmp"
-    die "Refusing to write ${target_file}; contains placeholders or blank values"
+    die "Refusing to write ${target_file}; contains unresolved placeholders or blank values"
   fi
 
   mv "$tmp" "$target_file"
