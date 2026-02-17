@@ -84,6 +84,15 @@ docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FI
 
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db sh -c 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done'
 
+log "Bootstrapping base schema"
+docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" run --rm backend python - <<'PY'
+from app.db.base import Base
+from app.db.session import engine
+import app.models.models  # noqa: F401
+
+Base.metadata.create_all(bind=engine)
+PY
+
 log "Running migrations"
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE TABLE IF NOT EXISTS schema_migrations (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());" >/dev/null
 for migration in "${PROJECT_DIR}"/migrations/*.sql; do
