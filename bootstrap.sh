@@ -194,8 +194,12 @@ write_setup_reference_file() {
 
 load_required_from_secrets() {
   local key
+  local value
   for key in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB REDIS_PASSWORD JWT_SECRET INTERNAL_API_KEY SESSION_SECRET VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY OPENAI_API_KEY ADMIN_EMAIL ADMIN_PASSWORD; do
-    value="$(read_env_value "$SECRETS_FILE" "$key")"
+    value="$(read_env_value "$SECRETS_FILE" "$key" || true)"
+    if [[ -z "$value" ]]; then
+      die "generated_secrets.env is missing required key '${key}'. Run ./setup.sh --regen-secrets (or ./bootstrap.sh --regen-secrets) to regenerate it."
+    fi
     printf -v "$key" '%s' "$value"
     export "$key"
   done
