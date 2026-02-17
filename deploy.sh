@@ -56,34 +56,27 @@ if [[ "$MODE" == "production" ]]; then
 fi
 
 ensure_admin_credentials() {
-  if grep -q '^ADMIN_EMAIL=' "$SECRETS_FILE" && grep -q '^ADMIN_PASSWORD=' "$SECRETS_FILE" && grep -q '^ADMIN_PASSWORD_HASH=' "$SECRETS_FILE"; then
+  if grep -q '^ADMIN_EMAIL=' "$SECRETS_FILE" && grep -q '^ADMIN_PASSWORD=' "$SECRETS_FILE"; then
     ADMIN_EMAIL="$(awk -F= '/^ADMIN_EMAIL=/{print $2}' "$SECRETS_FILE" | tail -1)"
     ADMIN_PASSWORD="$(awk -F= '/^ADMIN_PASSWORD=/{print $2}' "$SECRETS_FILE" | tail -1)"
-    ADMIN_PASSWORD_HASH="$(awk -F= '/^ADMIN_PASSWORD_HASH=/{print substr($0,index($0,"=")+1)}' "$SECRETS_FILE" | tail -1)"
     return
   fi
 
   ADMIN_EMAIL="admin@local"
   ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 16)"
-  ADMIN_PASSWORD_HASH="$(python3 - <<'PY' "$ADMIN_PASSWORD"
-import bcrypt, sys
-print(bcrypt.hashpw(sys.argv[1].encode('utf-8'), bcrypt.gensalt()).decode('utf-8'))
-PY
-)"
 
   tmp="$(mktemp)"
   awk -F= '!/^ADMIN_EMAIL=|^ADMIN_PASSWORD=|^ADMIN_PASSWORD_HASH=/' "$SECRETS_FILE" > "$tmp"
   {
     echo "ADMIN_EMAIL=${ADMIN_EMAIL}"
     echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}"
-    echo "ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}"
   } >> "$tmp"
   mv "$tmp" "$SECRETS_FILE"
   chmod 600 "$SECRETS_FILE"
 }
 
 ensure_admin_credentials
-export ADMIN_EMAIL ADMIN_PASSWORD ADMIN_PASSWORD_HASH
+export ADMIN_EMAIL ADMIN_PASSWORD
 
 log "Building images"
 docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" --env-file "$ENV_FILE" build
@@ -155,7 +148,9 @@ from app.db.session import SessionLocal
 from app.models.models import User
 
 email = os.environ['ADMIN_EMAIL']
-hashed = os.environ['ADMIN_PASSWORD_HASH']
+password = os.environ['ADMIN_PASSWORD']
+from app.core.security import hash_password
+hashed = hash_password(password)
 
 db = SessionLocal()
 try:

@@ -156,8 +156,12 @@ render_env_file() {
   [[ -f "$template_file" ]] || die "Missing template: $template_file"
 
   if [[ -f "$target_file" && "$FORCE" -eq 0 ]]; then
-    log "Skipping existing ${target_file} (use --force to overwrite)"
-    return 0
+    if rg -n 'CHANGEME|=$|\$\{[A-Za-z_][A-Za-z0-9_]*\}|__[A-Z0-9_]+__' "$target_file" >/dev/null; then
+      warn "Existing ${target_file} has unresolved placeholders; regenerating"
+    else
+      log "Skipping existing ${target_file} (use --force to overwrite)"
+      return 0
+    fi
   fi
 
   openai_key="$(resolve_openai_key)"
