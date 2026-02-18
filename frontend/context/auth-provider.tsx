@@ -3,16 +3,19 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
-import { getMe, type AuthMe } from '@/lib/api';
+import { getAccessToken, getMe, logout as logoutRequest, refreshAccessToken, setAccessToken, type AuthMe } from '@/lib/api';
 
 type AuthContextValue = {
   token: string | null;
   user: AuthMe | null;
   loading: boolean;
   setToken: (token: string | null) => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const PUBLIC_PATHS = new Set(['/login', '/register']);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
@@ -22,38 +25,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const setToken = (value: string | null) => {
-    if (value) {
-      localStorage.setItem('token', value);
-    } else {
-      localStorage.removeItem('token');
-    }
+    setAccessToken(value);
     setTokenState(value);
   };
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    if (!storedToken) {
-      setLoading(false);
-      if (pathname !== '/login') {
-        router.replace('/login');
-      }
-      return;
-    }
+  const logout = async () => {
+    await logoutRequest();
+    setToken(null);
+    setUser(null);
+    router.replace('/login');
+  };
 
-    setTokenState(storedToken);
-    getMe(storedToken)
-      .then((profile) => {
-        if (!profile) {
-          setToken(null);
+  useEffect(() => {
+    const bootstrapAuth = async () => {
+      const refreshed = await refreshAccessToken();
+      if (!refreshed) {
+        setToken(null);
+        setUser(null);
+        setLoading(false);
+        if (!PUBLIC_PATHS.has(pathname)) {
           router.replace('/login');
-          return;
         }
-        setUser(profile);
-      })
-      .finally(() => setLoading(false));
+        return;
+      }
+
+      const nextToken = getAccessToken();
+      setTokenState(nextToken);
+      const profile = await getMe();
+      if (!profile) {
+        await logout();
+        setLoading(false);
+        return;
+      }
+      setUser(profile);
+      setLoading(false);
+      if (pathname === '/login' || pathname === '/register') {
+        router.replace('/');
+      }
+    };
+
+    bootstrapAuth();
   }, [pathname, router]);
 
-  const value = useMemo(() => ({ token, user, loading, setToken }), [token, user, loading]);
+  const value = useMemo(() => ({ token, user, loading, setToken, logout }), [token, user, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

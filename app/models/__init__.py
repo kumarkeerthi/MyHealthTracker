@@ -2,6 +2,7 @@ from app.models.models import (
     AgentRunCadence,
     AuthLoginAttempt,
     AuthRefreshToken,
+    RefreshToken,
     ChallengeAssignment,
     ChallengeFrequency,
     ChallengeStreak,
@@ -34,6 +35,7 @@ from app.models.models import (
 __all__ = [
     "User",
     "AuthRefreshToken",
+    "RefreshToken",
     "AuthLoginAttempt",
     "PasswordResetToken",
     "ChallengeFrequency",

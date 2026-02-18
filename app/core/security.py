@@ -279,18 +279,21 @@ def create_access_token(user_id: int, role: str) -> str:
     return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(user_id: int, role: str) -> str:
-    claims = _build_claims(
-        user_id=user_id,
-        role=role,
-        token_type="refresh",
-        expires_delta=timedelta(days=settings.refresh_token_expiration_days),
-    )
-    return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+def create_refresh_token() -> str:
+    return secrets.token_hex(64)
 
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def validate_password_policy(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+    has_letter = any(char.isalpha() for char in password)
+    has_number = any(char.isdigit() for char in password)
+    if not has_letter or not has_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must include at least one letter and one number")
 
 
 def decode_token(token: str) -> dict[str, Any]:
