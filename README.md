@@ -195,3 +195,28 @@ export NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 - Image upload size limit enforcement for food image analysis.
 - Backup tooling: `backup.sh`, `restore.sh`, `setup_backup_cron.sh`.
 - Additional operational documentation under `docs/`.
+
+
+## Deterministic deployment (HTTP dev + HTTPS prod)
+
+Use the new environment-aware setup scripts:
+
+```bash
+./setup-http.sh
+```
+
+This script configures `ENV=development`, sets HTTP-safe cookies/CORS defaults, generates missing secrets, rebuilds containers from scratch, and waits for `GET /health`.
+
+For production with TLS:
+
+```bash
+APP_DOMAIN=yourdomain.com LETSENCRYPT_EMAIL=you@example.com ./setup-https.sh
+```
+
+This script configures `ENV=production`, enforces HTTPS in the API, sets secure cookie flags, provisions Nginx reverse proxy + Let's Encrypt, and verifies `https://<domain>/health`.
+
+### Migration safety guarantees
+- Alembic model metadata is explicitly registered in `alembic/env.py`.
+- Container startup runs `alembic upgrade head` with guarded stamp-recovery fallback.
+- Non-production startup warns when DB revision differs from repository head.
+- No manual migration commands are required for fresh or repeat deploys.

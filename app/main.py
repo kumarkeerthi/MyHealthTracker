@@ -1,24 +1,25 @@
 import logging
-from sqlalchemy import text
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
-from app.routers import router
 from app.core.config import settings
 from app.core.logging_config import configure_logging
 from app.core.monitoring import MetricsMiddleware, metrics_response
 from app.core.security import (
-    AuthRequiredMiddleware,
-    HTTPSRedirectEnforcementMiddleware,
     CSRFMiddleware,
+    HTTPSRedirectEnforcementMiddleware,
     InputSanitizationMiddleware,
     RateLimitMiddleware,
     RateLimitRule,
     SecurityHeadersMiddleware,
 )
 from app.data.seed_data import seed_initial_data
-from app.db.base import Base
 from app.db.session import SessionLocal, engine
+from app.routers import router
 from app.services.coaching_scheduler import coaching_scheduler
 from app.services.metabolic_advisor_scheduler import metabolic_advisor_scheduler
 from app.services.startup_service import create_admin_user_if_empty
@@ -32,14 +33,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-app.add_middleware(HTTPSRedirectEnforcementMiddleware)
+if settings.environment == "production":
+    app.add_middleware(HTTPSRedirectEnforcementMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(InputSanitizationMiddleware)
-app.add_middleware(AuthRequiredMiddleware)
 app.add_middleware(
     RateLimitMiddleware,
     default_rule=RateLimitRule(limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window_seconds),
@@ -51,9 +52,31 @@ app.add_middleware(MetricsMiddleware)
 app.include_router(router)
 
 
+def _warn_if_revision_drift() -> None:
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            db_revision = context.get_current_revision()
+
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+        script = ScriptDirectory.from_config(alembic_cfg)
+        heads = script.get_heads()
+        code_head = heads[0] if heads else None
+
+        if db_revision != code_head and settings.environment != "production":
+            logger.warning(
+                "Alembic revision drift detected: db_revision=%s code_head=%s",
+                db_revision,
+                code_head,
+            )
+    except Exception as exc:  # pragma: no cover - defensive startup logging
+        logger.warning("Unable to verify Alembic revision state: %s", exc)
+
+
 @app.on_event("startup")
 def startup_event():
-    Base.metadata.create_all(bind=engine)
+    _warn_if_revision_drift()
     db = SessionLocal()
     try:
         create_admin_user_if_empty(db)
