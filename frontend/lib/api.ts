@@ -194,6 +194,31 @@ export type MovementSettings = {
   movement_sensitivity: string;
 };
 
+export type CopilotActionResult = {
+  action_type: string;
+  items: string[];
+  db_action: boolean;
+  confirmation: string;
+};
+
+export type CopilotMessageResponse = {
+  conversation_id: number;
+  assistant_message: string;
+  actions_executed: CopilotActionResult[];
+};
+
+export type CopilotConversation = {
+  id: number;
+  title: string | null;
+  summary: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CopilotConversationDetail = CopilotConversation & {
+  messages: Array<{ role: 'user' | 'assistant' | 'system' | string; content: string; created_at: string }>;
+};
+
 export type RecipeSuggestion = {
   user_id: number;
   carb_load_remaining: number;
@@ -511,4 +536,29 @@ export async function confirmReport(payload: ParsedReport) {
   });
   if (!response.ok) throw new Error('Failed to save report');
   return await response.json();
+}
+
+
+export async function sendCopilotMessage(payload: { message: string; conversation_id?: number | null }): Promise<CopilotMessageResponse> {
+  const response = await apiRequest('/copilot/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to send copilot message');
+  }
+  return response.json();
+}
+
+export async function getCopilotConversations(): Promise<CopilotConversation[]> {
+  const response = await apiRequest('/copilot/conversations');
+  if (!response.ok) throw new Error('Failed to load copilot conversations');
+  return response.json();
+}
+
+export async function getCopilotConversation(id: number): Promise<CopilotConversationDetail> {
+  const response = await apiRequest(`/copilot/conversations/${id}`);
+  if (!response.ok) throw new Error('Failed to load copilot conversation');
+  return response.json();
 }

@@ -54,6 +54,8 @@ class User(Base):
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user")
     health_sync_summaries: Mapped[list["HealthSyncSummary"]] = relationship(back_populates="user")
     reports: Mapped[list["Report"]] = relationship(back_populates="user")
+    ai_conversations: Mapped[list["AIConversation"]] = relationship(back_populates="user")
+    ai_action_logs: Mapped[list["AIActionLog"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -84,6 +86,12 @@ class RecommendationStatus(str, Enum):
     PENDING = "PENDING"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
+
+
+class AIMessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
 
 
 class MetabolicPhase(str, Enum):
@@ -172,6 +180,47 @@ class LLMUsageDaily(Base):
     usage_date: Mapped[date] = mapped_column(Date, nullable=False)
     request_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AIConversation(Base):
+    __tablename__ = "ai_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="ai_conversations")
+    messages: Mapped[list["AIMessage"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+    action_logs: Mapped[list["AIActionLog"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+
+
+class AIMessage(Base):
+    __tablename__ = "ai_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("ai_conversations.id"), nullable=False, index=True)
+    role: Mapped[AIMessageRole] = mapped_column(SqlEnum(AIMessageRole, name="ai_message_role_enum"), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    conversation: Mapped["AIConversation"] = relationship(back_populates="messages")
+
+
+class AIActionLog(Base):
+    __tablename__ = "ai_action_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("ai_conversations.id"), nullable=False, index=True)
+    action_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="ai_action_logs")
+    conversation: Mapped["AIConversation"] = relationship(back_populates="action_logs")
 
 
 class MetabolicProfile(Base):

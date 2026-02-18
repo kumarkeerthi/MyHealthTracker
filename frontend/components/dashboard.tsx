@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { logHydration } from '@/lib/api';
 import { useDashboardData } from '@/context/dashboard-data-context';
 import { useToast } from '@/components/ui/toast';
-import { BarChart3, Home, Trophy, User, Dumbbell, Droplets } from 'lucide-react';
+import { BarChart3, Home, Trophy, User, Dumbbell, Droplets, Bot } from 'lucide-react';
 import type { AdvancedAnalytics, HabitIntelligence, MetabolicPhasePerformance } from '@/lib/api';
 import { PwaClient } from '@/components/pwa-client';
 import { DashboardView } from '@/components/views/dashboard-view';
@@ -17,6 +17,7 @@ import { AnalyticsView } from '@/components/views/analytics-view';
 import { ProfileView } from '@/components/views/profile-view';
 import { WeeklyReflectionView } from '@/components/views/weekly-reflection-view';
 import { ChallengesView } from '@/components/views/challenges-view';
+import { CopilotView } from '@/components/views/copilot-view';
 import { computeBodyVisualState, computeStatusBadges, computeStrengthVisualState, metabolicMomentumBanner, type VisualMode } from '@/components/visuals/visual-logic';
 import { computeEmotionState, computeIdentityScore, computeIdentityVisualState, resolveIdentityState } from '@/components/visuals/identity-engine';
 import { tabTransition } from '@/components/visuals/animation-config';
@@ -109,7 +110,7 @@ type DashboardProps = {
   eveningInsulinSpikeRisk: boolean;
 };
 
-type TabKey = 'home' | 'body' | 'strength' | 'analytics' | 'profile';
+type TabKey = 'home' | 'body' | 'strength' | 'analytics' | 'profile' | 'copilot';
 
 export function Dashboard(props: DashboardProps) {
   const [tab, setTab] = useState<TabKey>('home');
@@ -224,6 +225,7 @@ export function Dashboard(props: DashboardProps) {
     { key: 'strength', label: 'Strength', icon: <Dumbbell size={16} /> },
     { key: 'analytics', label: 'Analytics', icon: <BarChart3 size={16} /> },
     { key: 'profile', label: 'Profile', icon: <Trophy size={16} /> },
+    { key: 'copilot', label: 'Copilot', icon: <Bot size={16} /> },
   ];
 
   return (
@@ -331,11 +333,12 @@ export function Dashboard(props: DashboardProps) {
               )}
             </div>
           )}
+          {tab === 'copilot' && <CopilotView />}
         </motion.div>
       </AnimatePresence>
 
       <nav className="fixed inset-x-0 bottom-0 mx-auto w-full max-w-md border-t border-white/10 bg-slate-950/95 px-3 pb-5 pt-2 backdrop-blur-xl">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-6 gap-1">
           {tabButtons.map((item) => (
             <motion.div
               key={item.key}

@@ -132,6 +132,48 @@ class LLMAnalyzeResponse(BaseModel):
     source: str
 
 
+
+
+class CopilotConversationMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1200)
+    conversation_id: int | None = None
+
+
+class CopilotActionResult(BaseModel):
+    action_type: str
+    items: list[str] = Field(default_factory=list)
+    db_action: bool = False
+    confirmation: str
+
+
+class CopilotConversationMessageResponse(BaseModel):
+    conversation_id: int
+    assistant_message: str
+    actions_executed: list[CopilotActionResult] = Field(default_factory=list)
+
+
+class CopilotConversationListItem(BaseModel):
+    id: int
+    title: str | None = None
+    summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CopilotMessageRecord(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
+
+
+class CopilotConversationDetailResponse(BaseModel):
+    id: int
+    title: str | None = None
+    summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    messages: list[CopilotMessageRecord] = Field(default_factory=list)
+
 class RecipeResponse(BaseModel):
     id: int
     name: str
