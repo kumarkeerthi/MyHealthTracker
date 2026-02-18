@@ -21,3 +21,7 @@ email-validator==2.2.0
 
 httpx==0.27.2
 pytest==9.0.2
+
+pdfminer.six==20231228
+Pillow==10.4.0
+pytesseract==0.3.10

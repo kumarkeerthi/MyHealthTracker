@@ -657,3 +657,23 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=8)
+
+
+class ReportParameterPayload(BaseModel):
+    name: str
+    normalized_key: str
+    value: float
+    unit: str
+    reference_range: str | None = None
+
+
+class ReportUploadResponse(BaseModel):
+    file_token: str
+    report_date: date | None = None
+    parameters: list[ReportParameterPayload]
+
+
+class ReportConfirmRequest(BaseModel):
+    file_token: str
+    report_date: date | None = None
+    parameters: list[ReportParameterPayload]

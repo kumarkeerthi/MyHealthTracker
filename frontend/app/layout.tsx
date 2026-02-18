@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
+import { ActivityHub } from '@/components/ui/activity-hub';
 
 export const metadata: Metadata = {
   title: 'Metabolic OS',
@@ -23,7 +24,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-bg text-white antialiased"><Providers>{children}</Providers></body>
+      <body className="bg-bg text-white antialiased"><Providers>{children}<ActivityHub /></Providers></body>
     </html>
   );
 }

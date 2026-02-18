@@ -460,3 +460,55 @@ export async function logout() {
   await fetch(`${baseUrl}/auth/logout`, { method: 'POST', credentials: 'include', headers: csrf ? { 'X-CSRF-Token': csrf } : undefined });
   setAccessToken(null);
 }
+
+
+export async function logFood(payload: { entries: Array<{ food_item_id: number; servings: number }>; meal_context?: string; dinner_mode?: string | null; consumed_at?: string; }) {
+  const response = await apiRequest('/log-food', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 1, entries: payload.entries, meal_context: payload.meal_context ?? 'snack', dinner_mode: payload.dinner_mode ?? null, consumed_at: payload.consumed_at ?? new Date().toISOString() }),
+  });
+  if (!response.ok) throw new Error('Failed to log food');
+  return await response.json();
+}
+
+export async function logVitals(payload: { resting_hr?: number; sleep_hours?: number; fasting_glucose?: number }) {
+  const response = await apiRequest('/log-vitals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 1, recorded_at: new Date().toISOString(), ...payload }),
+  });
+  if (!response.ok) throw new Error('Failed to log vitals');
+  return await response.json();
+}
+
+export async function logExercise(payload: { activity_type: string; duration_minutes: number; exercise_category?: string; movement_type?: string }) {
+  const response = await apiRequest('/log-exercise', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: 1, exercise_category: payload.exercise_category ?? 'STRENGTH', activity_type: payload.activity_type, movement_type: payload.movement_type ?? 'general', muscle_group: 'full_body', duration_minutes: payload.duration_minutes, perceived_intensity: 5, progression_level: 1 }),
+  });
+  if (!response.ok) throw new Error('Failed to log exercise');
+  return await response.json();
+}
+
+export type ParsedReportParameter = { name: string; normalized_key: string; value: number; unit: string; reference_range?: string | null; };
+export type ParsedReport = { file_token: string; report_date: string | null; parameters: ParsedReportParameter[] };
+
+export async function uploadReport(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiRequest('/reports/upload', { method: 'POST', body: formData });
+  if (!response.ok) throw new Error('Failed to upload report');
+  return (await response.json()) as ParsedReport;
+}
+
+export async function confirmReport(payload: ParsedReport) {
+  const response = await apiRequest('/reports/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to save report');
+  return await response.json();
+}

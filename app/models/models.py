@@ -53,6 +53,7 @@ class User(Base):
     auth_login_attempts: Mapped[list["AuthLoginAttempt"]] = relationship(back_populates="user")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user")
     health_sync_summaries: Mapped[list["HealthSyncSummary"]] = relationship(back_populates="user")
+    reports: Mapped[list["Report"]] = relationship(back_populates="user")
 
 
 class ExerciseCategory(str, Enum):
@@ -556,3 +557,30 @@ class HabitCheckin(Base):
 
     user: Mapped["User"] = relationship(back_populates="habit_checkins")
     habit: Mapped["HabitDefinition"] = relationship(back_populates="checkins")
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    report_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="reports")
+    parameters: Mapped[list["ReportParameter"]] = relationship(back_populates="report", cascade="all, delete-orphan")
+
+
+class ReportParameter(Base):
+    __tablename__ = "report_parameters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("reports.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    normalized_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    reference_range: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    report: Mapped["Report"] = relationship(back_populates="parameters")
