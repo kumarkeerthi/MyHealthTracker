@@ -17,3 +17,4 @@ pywebpush==2.0.3
 py-vapid==1.9.2
 
 alembic==1.14.0
+email-validator==2.2.0

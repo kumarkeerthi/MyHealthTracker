@@ -113,7 +113,8 @@ from app.services.strength_engine import (
 )
 from app.services.vitals_engine import calculate_vitals_risk_score
 
-router = APIRouter()
+public_router = APIRouter()
+protected_router = APIRouter(dependencies=[Depends(get_current_token_claims)])
 logger = logging.getLogger(__name__)
 health_sync_rate_limiter = SlidingWindowLimiter()
 
@@ -148,12 +149,13 @@ register_rate_limiter = SlidingWindowLimiter()
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    secure_cookie = settings.environment == "production"
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=settings.require_https,
-        samesite="lax",
+        secure=secure_cookie,
+        samesite="none" if secure_cookie else "lax",
         max_age=settings.refresh_token_expiration_days * 24 * 60 * 60,
         path="/",
     )
@@ -165,8 +167,8 @@ def _set_csrf_cookie(response: Response) -> str:
         key="csrf_token",
         value=csrf_token,
         httponly=False,
-        secure=settings.require_https,
-        samesite="lax",
+        secure=settings.environment == "production",
+        samesite="none" if settings.environment == "production" else "lax",
         max_age=settings.refresh_token_expiration_days * 24 * 60 * 60,
         path="/",
     )
@@ -206,7 +208,7 @@ def _increment_llm_daily_usage(db: Session, user_id: int, route: str, ip_address
     return True
 
 
-@router.post("/auth/login", response_model=AuthTokenResponse)
+@public_router.post("/auth/login", response_model=AuthTokenResponse)
 def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
     limit_rule = RateLimitRule(limit=5, window_seconds=60)
@@ -219,7 +221,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
-@router.post("/auth/register", response_model=AuthTokenResponse)
+@public_router.post("/auth/register", response_model=AuthTokenResponse)
 def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
     limit_rule = RateLimitRule(limit=10, window_seconds=3600)
@@ -232,13 +234,13 @@ def register(payload: RegisterRequest, request: Request, response: Response, db:
     return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
-@router.get("/auth/me", response_model=AuthMeResponse)
+@protected_router.get("/auth/me", response_model=AuthMeResponse)
 def auth_me(claims: dict = Depends(get_current_token_claims), db: Session = Depends(get_db)):
     user = auth_service.get_user_by_id(db, int(claims["sub"]))
     return AuthMeResponse(id=user.id, email=user.email, role=user.role)
 
 
-@router.post("/auth/refresh", response_model=AuthTokenResponse)
+@public_router.post("/auth/refresh", response_model=AuthTokenResponse)
 def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
     _validate_csrf(request)
     refresh_cookie = request.cookies.get("refresh_token")
@@ -250,7 +252,7 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
     return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
-@router.post("/auth/logout")
+@protected_router.post("/auth/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     _validate_csrf(request)
     refresh_cookie = request.cookies.get("refresh_token")
@@ -261,20 +263,20 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
-@router.post("/auth/password-reset/request")
+@public_router.post("/auth/password-reset/request")
 def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
     # TODO: send token over email provider; response intentionally generic.
     reset_token = auth_service.request_password_reset(db, payload.email)
     return {"status": "ok", "email_sent": bool(reset_token)}
 
 
-@router.post("/auth/password-reset/confirm")
+@public_router.post("/auth/password-reset/confirm")
 def confirm_password_reset(payload: PasswordResetConfirmRequest, db: Session = Depends(get_db)):
     auth_service.confirm_password_reset(db, payload.token, payload.new_password)
     return {"status": "ok"}
 
 
-@router.post("/log-food", response_model=LogFoodResponse)
+@protected_router.post("/log-food", response_model=LogFoodResponse)
 def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -435,7 +437,7 @@ def log_food(payload: LogFoodRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/daily-summary", response_model=DailySummaryResponse)
+@protected_router.get("/daily-summary", response_model=DailySummaryResponse)
 def daily_summary(
     user_id: int = Query(default=1),
     date: datetime | None = Query(default=None),
@@ -498,7 +500,7 @@ def daily_summary(
     )
 
 
-@router.post("/log-vitals")
+@protected_router.post("/log-vitals")
 def log_vitals(payload: LogVitalsRequest, db: Session = Depends(get_db)):
     if not db.get(User, payload.user_id):
         raise HTTPException(status_code=404, detail="User not found")
@@ -567,7 +569,7 @@ def log_vitals(payload: LogVitalsRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/log-exercise")
+@protected_router.post("/log-exercise")
 def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
     if not db.get(User, payload.user_id):
         raise HTTPException(status_code=404, detail="User not found")
@@ -613,7 +615,7 @@ def log_exercise(payload: LogExerciseRequest, db: Session = Depends(get_db)):
     return {"status": "ok", "exercise_entry_id": entry.id}
 
 
-@router.get("/analytics/advanced", response_model=AdvancedAnalyticsResponse)
+@protected_router.get("/analytics/advanced", response_model=AdvancedAnalyticsResponse)
 def advanced_analytics(
     user_id: int = Query(default=1),
     days: int = Query(default=30, ge=7, le=180),
@@ -625,7 +627,7 @@ def advanced_analytics(
     return AdvancedAnalyticsResponse(**analytics)
 
 
-@router.get("/metabolic/performance-view", response_model=MetabolicPhasePerformanceResponse)
+@protected_router.get("/metabolic/performance-view", response_model=MetabolicPhasePerformanceResponse)
 def metabolic_performance_view(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     payload = metabolic_phase_service.build_phase_dashboard(db, user_id=user_id)
     if not payload:
@@ -634,7 +636,7 @@ def metabolic_performance_view(user_id: int = Query(default=1), db: Session = De
     return MetabolicPhasePerformanceResponse(**payload)
 
 
-@router.get("/weekly-summary", response_model=WeeklySummaryResponse)
+@protected_router.get("/weekly-summary", response_model=WeeklySummaryResponse)
 def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     end_date = datetime.utcnow().date()
     start_date = end_date - timedelta(days=6)
@@ -671,7 +673,7 @@ def weekly_summary(user_id: int = Query(default=1), db: Session = Depends(get_db
     )
 
 
-@router.get("/metabolic-advisor-report", response_model=MetabolicAdvisorReportResponse)
+@protected_router.get("/metabolic-advisor-report", response_model=MetabolicAdvisorReportResponse)
 def metabolic_advisor_report(
     user_id: int = Query(default=1),
     db: Session = Depends(get_db),
@@ -701,7 +703,7 @@ def metabolic_advisor_report(
     )
 
 
-@router.get("/profile", response_model=ProfileResponse)
+@protected_router.get("/profile", response_model=ProfileResponse)
 def get_profile(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -724,7 +726,7 @@ def get_profile(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     )
 
 
-@router.put("/profile", response_model=ProfileResponse)
+@protected_router.put("/profile", response_model=ProfileResponse)
 def put_profile(payload: UpdateProfileRequest, user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -753,7 +755,7 @@ def put_profile(payload: UpdateProfileRequest, user_id: int = Query(default=1), 
     )
 
 
-@router.get("/exercise-summary", response_model=ExerciseSummaryResponse)
+@protected_router.get("/exercise-summary", response_model=ExerciseSummaryResponse)
 def exercise_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     entries = db.scalars(select(ExerciseEntry).where(ExerciseEntry.user_id == user_id)).all()
     total_sessions = len(entries)
@@ -781,7 +783,7 @@ def exercise_summary(user_id: int = Query(default=1), db: Session = Depends(get_
     )
 
 
-@router.get("/vitals-summary", response_model=VitalsSummaryResponse)
+@protected_router.get("/vitals-summary", response_model=VitalsSummaryResponse)
 def vitals_summary(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     vitals_entries = db.scalars(
         select(VitalsEntry).where(VitalsEntry.user_id == user_id).order_by(VitalsEntry.recorded_at.asc())
@@ -859,7 +861,7 @@ def _merge_health_sync(existing: HealthSyncSummary, payload: HealthSummarySyncPa
     return merged_data, changed
 
 
-@router.post("/health/sync-summary")
+@protected_router.post("/health/sync-summary")
 async def sync_health_summary(
     payload: HealthSummarySyncPayload,
     request: Request,
@@ -943,7 +945,7 @@ async def sync_health_summary(
     return {"status": "ok", "result": result_status, "payload_size": payload_size_bytes}
 
 
-@router.post("/apple-sync")
+@protected_router.post("/apple-sync")
 def apple_sync(
     payload: AppleHealthImportRequest,
     claims: dict = Depends(get_current_token_claims),
@@ -970,7 +972,7 @@ def apple_sync(
     return {"status": "ok", **result, **step_hook}
 
 
-@router.post("/import-apple-health")
+@protected_router.post("/import-apple-health")
 def import_apple_health(
     payload: AppleHealthImportRequest,
     claims: dict = Depends(get_current_token_claims),
@@ -996,7 +998,7 @@ def _challenge_payload(challenge: ChallengeAssignment, current_streak: int, long
     )
 
 
-@router.get("/challenge", response_model=ChallengeResponse)
+@protected_router.get("/challenge", response_model=ChallengeResponse)
 def get_daily_challenge(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1009,7 +1011,7 @@ def get_daily_challenge(user_id: int = Query(default=1), db: Session = Depends(g
     return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
 
 
-@router.get("/habits/intelligence", response_model=HabitIntelligenceResponse)
+@protected_router.get("/habits/intelligence", response_model=HabitIntelligenceResponse)
 def get_habit_intelligence(
     user_id: int = Query(default=1),
     days: int = Query(default=90, ge=7, le=365),
@@ -1023,7 +1025,7 @@ def get_habit_intelligence(
     return HabitIntelligenceResponse(**summary)
 
 
-@router.get("/challenge/monthly", response_model=ChallengeResponse)
+@protected_router.get("/challenge/monthly", response_model=ChallengeResponse)
 def get_monthly_challenge(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1036,7 +1038,7 @@ def get_monthly_challenge(user_id: int = Query(default=1), db: Session = Depends
     return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
 
 
-@router.post("/challenge/complete", response_model=ChallengeResponse)
+@protected_router.post("/challenge/complete", response_model=ChallengeResponse)
 def complete_challenge(payload: CompleteChallengeRequest, db: Session = Depends(get_db)):
     challenge = db.scalar(
         select(ChallengeAssignment).where(
@@ -1052,12 +1054,12 @@ def complete_challenge(payload: CompleteChallengeRequest, db: Session = Depends(
     db.commit()
     return _challenge_payload(challenge, streak.current_streak, streak.longest_streak)
 
-@router.post("/external-event")
+@protected_router.post("/external-event")
 def external_event(payload: dict):
     return {"status": "accepted", "message": "External event placeholder", "payload": payload}
 
 
-@router.post("/whatsapp-message", response_model=CoachingMessageResponse)
+@protected_router.post("/whatsapp-message", response_model=CoachingMessageResponse)
 def whatsapp_message(payload: WhatsAppMessageRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1094,7 +1096,7 @@ def whatsapp_message(payload: WhatsAppMessageRequest, db: Session = Depends(get_
     )
 
 
-@router.post("/notification-event")
+@protected_router.post("/notification-event")
 def notification_event(payload: NotificationEventRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1114,7 +1116,7 @@ def notification_event(payload: NotificationEventRequest, db: Session = Depends(
     return {"status": "accepted", "delivery": result}
 
 
-@router.get("/notification-settings", response_model=NotificationSettingsResponse)
+@protected_router.get("/notification-settings", response_model=NotificationSettingsResponse)
 def get_notification_settings(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1140,7 +1142,7 @@ def get_notification_settings(user_id: int = Query(default=1), db: Session = Dep
     )
 
 
-@router.put("/notification-settings", response_model=NotificationSettingsResponse)
+@protected_router.put("/notification-settings", response_model=NotificationSettingsResponse)
 def update_notification_settings(
     payload: UpdateNotificationSettingsRequest,
     user_id: int = Query(default=1),
@@ -1176,7 +1178,7 @@ def update_notification_settings(
     )
 
 
-@router.get("/movement/panel", response_model=MovementPanelResponse)
+@protected_router.get("/movement/panel", response_model=MovementPanelResponse)
 def movement_panel(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1185,7 +1187,7 @@ def movement_panel(user_id: int = Query(default=1), db: Session = Depends(get_db
     return MovementPanelResponse(**panel)
 
 
-@router.get("/movement/settings", response_model=MovementSettingsResponse)
+@protected_router.get("/movement/settings", response_model=MovementSettingsResponse)
 def get_movement_settings(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1200,7 +1202,7 @@ def get_movement_settings(user_id: int = Query(default=1), db: Session = Depends
     )
 
 
-@router.put("/movement/settings", response_model=MovementSettingsResponse)
+@protected_router.put("/movement/settings", response_model=MovementSettingsResponse)
 def update_movement_settings(
     payload: UpdateMovementSettingsRequest,
     user_id: int = Query(default=1),
@@ -1220,12 +1222,12 @@ def update_movement_settings(
     )
 
 
-@router.get("/push/public-key")
+@protected_router.get("/push/public-key")
 def push_public_key():
     return {"public_key": settings.vapid_public_key}
 
 
-@router.post("/push/subscribe")
+@protected_router.post("/push/subscribe")
 def push_subscribe(payload: PushSubscribeRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1236,7 +1238,7 @@ def push_subscribe(payload: PushSubscribeRequest, db: Session = Depends(get_db))
     return {"status": "ok", "subscription_id": record.id}
 
 
-@router.post("/push/send")
+@protected_router.post("/push/send")
 def push_send(payload: PushSendRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1246,7 +1248,7 @@ def push_send(payload: PushSendRequest, db: Session = Depends(get_db)):
     return {"status": "accepted", "delivery": result}
 
 
-@router.post("/hydration/log", response_model=HydrationLogResponse)
+@protected_router.post("/hydration/log", response_model=HydrationLogResponse)
 def hydration_log(payload: HydrationLogRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1272,7 +1274,7 @@ def hydration_log(payload: HydrationLogRequest, db: Session = Depends(get_db)):
     return HydrationLogResponse(date=target_date, **data)
 
 
-@router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)
+@protected_router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)
 def analyze_food_image(
     request: Request,
     image: UploadFile = File(...),
@@ -1312,7 +1314,7 @@ def analyze_food_image(
     return food_image_service.analyze_food_image(db, user, profile, image_bytes, safe_context, consumed_at)
 
 
-@router.post("/analyze-food-image/confirm", response_model=ConfirmFoodImageLogResponse)
+@protected_router.post("/analyze-food-image/confirm", response_model=ConfirmFoodImageLogResponse)
 def confirm_food_image_log(payload: ConfirmFoodImageLogRequest, db: Session = Depends(get_db)):
     user = db.get(User, payload.user_id)
     if not user:
@@ -1334,7 +1336,7 @@ def confirm_food_image_log(payload: ConfirmFoodImageLogRequest, db: Session = De
     )
 
 
-@router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
+@protected_router.post("/llm/analyze", response_model=LLMAnalyzeResponse)
 def llm_analyze(payload: LLMAnalyzeRequest, request: Request, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
     if not llm_usage_limiter.check_and_increment(payload.user_id, settings.llm_requests_per_hour):
@@ -1379,13 +1381,13 @@ def llm_analyze(payload: LLMAnalyzeRequest, request: Request, db: Session = Depe
     return LLMAnalyzeResponse(**analysis)
 
 
-@router.get("/recipes", response_model=list[RecipeResponse])
+@protected_router.get("/recipes", response_model=list[RecipeResponse])
 def list_recipes(db: Session = Depends(get_db)):
     recipes = recipe_service.list_recipes(db)
     return [_to_recipe_response(recipe) for recipe in recipes]
 
 
-@router.get("/recipes/suggestions", response_model=RecipeSuggestionResponse)
+@protected_router.get("/recipes/suggestions", response_model=RecipeSuggestionResponse)
 def recipe_suggestions(user_id: int = Query(default=1), db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -1401,6 +1403,10 @@ def recipe_suggestions(user_id: int = Query(default=1), db: Session = Depends(ge
     )
 
 
-@router.get("/admin/system-status")
+@protected_router.get("/admin/system-status")
 def admin_system_status(_claims: dict = Depends(require_admin)):
     return {"status": "ok", "message": "Admin access verified"}
+
+router = APIRouter()
+router.include_router(public_router)
+router.include_router(protected_router)

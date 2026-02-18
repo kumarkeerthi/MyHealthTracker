@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Metabolic Intelligence Engine"
+    environment: str = Field(default="development", validation_alias=AliasChoices("ENV", "ENVIRONMENT"))
     database_url: str = Field(
         default="postgresql+psycopg2://metabolic:metabolic@db:5432/metabolic"
     )
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     food_image_public_base_url: str = "https://s3.local/myhealthtracker/food-images"
     log_level: str = "INFO"
     log_dir: str = "logs"
-    cors_allowed_origins: str = "http://74.162.90.37:3000"
+    cors_allowed_origins: str = "http://localhost:3000"
     rate_limit_requests: int = 120
     rate_limit_window_seconds: int = 60
     llm_requests_per_hour: int = 40
@@ -32,7 +33,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 15
     refresh_token_expiration_days: int = 90
-    require_https: bool = True
+    require_https: bool = False
     auth_bcrypt_rounds: int = 12
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_seconds: int = 60
@@ -46,5 +47,6 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@metabolicos.app"
+
 
 settings = Settings()

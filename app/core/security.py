@@ -78,7 +78,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 class HTTPSRedirectEnforcementMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if not settings.require_https:
+        if settings.environment != "production":
             return await call_next(request)
 
         if request.url.path in {"/health", "/metrics"}:
@@ -93,7 +93,8 @@ class HTTPSRedirectEnforcementMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        if settings.environment == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -104,9 +105,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+    EXEMPT_PATHS = {"/auth/login", "/auth/register", "/auth/refresh", "/docs", "/openapi.json"}
 
     async def dispatch(self, request: Request, call_next):
-        if request.method in self.SAFE_METHODS:
+        if request.method in self.SAFE_METHODS or request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
         origin = request.headers.get("origin", "")
