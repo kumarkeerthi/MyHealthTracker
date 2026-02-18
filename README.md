@@ -217,6 +217,6 @@ This script configures `ENV=production`, enforces HTTPS in the API, sets secure 
 
 ### Migration safety guarantees
 - Alembic model metadata is explicitly registered in `alembic/env.py`.
-- Container startup runs `alembic upgrade head` with guarded stamp-recovery fallback.
+- Container startup runs `alembic upgrade head` and fails fast if migrations cannot be applied.
 - Non-production startup warns when DB revision differs from repository head.
 - No manual migration commands are required for fresh or repeat deploys.
