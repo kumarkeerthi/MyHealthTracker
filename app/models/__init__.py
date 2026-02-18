@@ -1,5 +1,9 @@
 from app.models.models import (
     AgentRunCadence,
+    AIActionLog,
+    AIConversation,
+    AIMessage,
+    AIMessageRole,
     AuthLoginAttempt,
     AuthRefreshToken,
     RefreshToken,
@@ -68,4 +72,8 @@ __all__ = [
     "PushSubscription",
     "AgentRunCadence",
     "RecommendationStatus",
+    "AIMessageRole",
+    "AIConversation",
+    "AIMessage",
+    "AIActionLog",
 ]
