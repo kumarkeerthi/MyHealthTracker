@@ -111,18 +111,18 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         origin = request.headers.get("origin", "")
         referer = request.headers.get("referer", "")
-        allowed_origin = settings.cors_allowed_origins.split(",")[0].strip()
+        allowed_origins = [item.strip() for item in settings.cors_allowed_origins.split(",") if item.strip()]
 
-        if origin and origin != allowed_origin:
+        if origin and origin not in allowed_origins:
             return JSONResponse(status_code=403, content={"detail": "CSRF origin check failed"})
-        if not origin and referer and not referer.startswith(allowed_origin):
+        if not origin and referer and not any(referer.startswith(allowed) for allowed in allowed_origins):
             return JSONResponse(status_code=403, content={"detail": "CSRF referer check failed"})
 
         return await call_next(request)
 
 
 class AuthRequiredMiddleware(BaseHTTPMiddleware):
-    PUBLIC_PATHS = {"/health", "/metrics", "/auth/login", "/auth/refresh", "/auth/password-reset/request", "/auth/password-reset/confirm"}
+    PUBLIC_PATHS = {"/health", "/metrics", "/auth/login", "/auth/register", "/auth/refresh", "/auth/password-reset/request", "/auth/password-reset/confirm"}
 
     async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS" or request.url.path in self.PUBLIC_PATHS:

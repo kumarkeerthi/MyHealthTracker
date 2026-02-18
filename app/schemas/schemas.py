@@ -633,6 +633,17 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8)
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+
+
+class AuthMeResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+
+
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
 

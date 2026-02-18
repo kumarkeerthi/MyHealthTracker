@@ -21,6 +21,7 @@ from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.services.coaching_scheduler import coaching_scheduler
 from app.services.metabolic_advisor_scheduler import metabolic_advisor_scheduler
+from app.services.startup_service import create_admin_user_if_empty
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def startup_event():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        create_admin_user_if_empty(db)
         seed_initial_data(db)
     finally:
         db.close()

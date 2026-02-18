@@ -1,7 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
 from app.models import FoodItem, HabitChallengeType, HabitCheckin, HabitDefinition, MetabolicAgentState, MetabolicProfile, NotificationSettings, Recipe, User
 
 
@@ -146,31 +145,6 @@ HABIT_DEFINITIONS = [
     },
 ]
 
-DEFAULT_USER = {
-    "email": "demo@myhealthtracker.local",
-    "hashed_password": hash_password("ChangeMe123!"),
-    "role": "admin",
-    "age": 38,
-    "sex": "Male",
-    "triglycerides": 346,
-    "hdl": 29,
-    "hba1c": 6.0,
-    "insulin_resistant": True,
-    "diet_type": "Vegetarian + eggs",
-    "eating_window_start": "08:00",
-    "eating_window_end": "14:00",
-    "max_chapati_per_day": 2,
-    "no_rice_reset": True,
-    "eggs_per_day": 3,
-    "whey_per_day": 1,
-    "dark_chocolate_max_squares": 2,
-    "oil_limit_tsp": 3.0,
-    "protein_target_min": 90,
-    "protein_target_max": 110,
-    "carb_ceiling": 90,
-}
-
-
 DEFAULT_METABOLIC_PROFILE = {
     "protein_target_min": 90,
     "protein_target_max": 110,
@@ -187,32 +161,29 @@ DEFAULT_METABOLIC_PROFILE = {
 
 
 def seed_initial_data(db: Session) -> None:
-    user = db.scalar(select(User).limit(1))
-    if not user:
-        user = User(**DEFAULT_USER)
-        db.add(user)
-        db.flush()
+    user = db.scalar(select(User).order_by(User.id.asc()).limit(1))
 
-    profile_exists = db.scalar(select(MetabolicProfile.id).where(MetabolicProfile.user_id == user.id))
-    if not profile_exists:
-        db.add(MetabolicProfile(user_id=user.id, **DEFAULT_METABOLIC_PROFILE))
+    if user:
+        profile_exists = db.scalar(select(MetabolicProfile.id).where(MetabolicProfile.user_id == user.id))
+        if not profile_exists:
+            db.add(MetabolicProfile(user_id=user.id, **DEFAULT_METABOLIC_PROFILE))
 
-    notification_settings_exists = db.scalar(select(NotificationSettings.id).where(NotificationSettings.user_id == user.id))
-    if not notification_settings_exists:
-        db.add(NotificationSettings(user_id=user.id))
+        notification_settings_exists = db.scalar(select(NotificationSettings.id).where(NotificationSettings.user_id == user.id))
+        if not notification_settings_exists:
+            db.add(NotificationSettings(user_id=user.id))
 
-    agent_state_exists = db.scalar(select(MetabolicAgentState.user_id).where(MetabolicAgentState.user_id == user.id))
-    if not agent_state_exists:
-        db.add(
-            MetabolicAgentState(
-                user_id=user.id,
-                carb_ceiling_current=user.carb_ceiling,
-                protein_target_current=user.protein_target_min,
-                fruit_allowance_current=1,
-                fruit_allowance_weekly=7,
-                notes="Initialized from seed defaults.",
+        agent_state_exists = db.scalar(select(MetabolicAgentState.user_id).where(MetabolicAgentState.user_id == user.id))
+        if not agent_state_exists:
+            db.add(
+                MetabolicAgentState(
+                    user_id=user.id,
+                    carb_ceiling_current=user.carb_ceiling,
+                    protein_target_current=user.protein_target_min,
+                    fruit_allowance_current=1,
+                    fruit_allowance_weekly=7,
+                    notes="Initialized from seed defaults.",
+                )
             )
-        )
 
     existing_food_names = set(db.scalars(select(FoodItem.name)).all())
     for food in FOOD_ITEMS:
