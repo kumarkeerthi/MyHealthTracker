@@ -1,12 +1,40 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 import { Dashboard } from '@/components/dashboard';
+import { useAuth } from '@/context/auth-provider';
 import { getDashboardData } from '@/lib/api';
 
-export default async function Home() {
-  const { daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance, movementPanel } = await getDashboardData();
+export default function Home() {
+  const { token, user, loading } = useAuth();
+  const [data, setData] = useState<Awaited<ReturnType<typeof getDashboardData>> | null>(null);
+
+  useEffect(() => {
+    if (!token || !user) {
+      return;
+    }
+    getDashboardData(user.id, token).then(setData);
+  }, [token, user]);
+
+  if (loading) {
+    return <main className="p-6">Loading...</main>;
+  }
+
+  if (!token || !user) {
+    return <main className="p-6">Please login to view your dashboard.</main>;
+  }
+
+  const daily = data?.daily;
+  const profile = data?.profile;
+  const vitals = data?.vitals;
+  const exercise = data?.exercise;
+  const challenge = data?.challenge;
+  const monthlyChallenge = data?.monthlyChallenge;
+  const recipeSuggestion = data?.recipeSuggestion;
 
   const insulin = Math.round(daily?.insulin_load_score ?? 38);
   const complianceSignals = [daily?.validations?.protein_minimum, daily?.validations?.carb_limit, daily?.validations?.oil_limit].filter(Boolean).length;
-
   const compliance = Math.round((complianceSignals / 3) * 100) || 66;
 
   return (
@@ -35,34 +63,15 @@ export default async function Home() {
       monkeyBarProgress={exercise?.monkey_bar_progress ?? { dead_hang_duration_seconds: 0, pull_up_count: 0, assisted_pull_up_reps: 0, grip_endurance_seconds: 0 }}
       weeklyStrengthGraph={exercise?.weekly_strength_graph ?? [0, 0, 0, 0, 0, 0, 0]}
       metabolicExerciseMessage={exercise?.metabolic_message ?? 'Strength momentum stable'}
-      challenge={challenge ?? {
-        title: 'Protein First Day',
-        description: 'Start each meal with protein to reduce glucose spikes.',
-        current_streak: 0,
-        longest_streak: 0,
-        completed: false,
-        banner_title: '7 Day Insulin Control Challenge',
-      }}
-      monthlyChallenge={monthlyChallenge ?? {
-        title: '10k Step Day',
-        description: 'Complete at least 20 days above 10k steps this month.',
-        completed: false,
-      }}
+      challenge={challenge ?? { title: 'Protein First Day', description: 'Start each meal with protein to reduce glucose spikes.', current_streak: 0, longest_streak: 0, completed: false, banner_title: '7 Day Insulin Control Challenge' }}
+      monthlyChallenge={monthlyChallenge ?? { title: '10k Step Day', description: 'Complete at least 20 days above 10k steps this month.', completed: false }}
       recipeSuggestion={recipeSuggestion?.suggestion ?? 'Based on carb load remaining, try: Spinach + tofu stir fry.'}
       carbLoadRemaining={recipeSuggestion?.carb_load_remaining ?? 0}
-      recipes={recipes ?? recipeSuggestion?.recipes ?? []}
-      analytics={analytics ?? null}
-      habitIntelligence={habitIntelligence ?? null}
-      metabolicPerformance={metabolicPerformance ?? null}
-      movementPanel={movementPanel ?? {
-        post_meal_walk_status: 'pending',
-        steps_today: 0,
-        walk_streak: 0,
-        recovery_prompt: 'Resume today.',
-        badge: null,
-        alerts_remaining: 3,
-        post_meal_walk_bonus: false,
-      }}
+      recipes={data?.recipes ?? recipeSuggestion?.recipes ?? []}
+      analytics={data?.analytics ?? null}
+      habitIntelligence={data?.habitIntelligence ?? null}
+      metabolicPerformance={data?.metabolicPerformance ?? null}
+      movementPanel={data?.movementPanel ?? { post_meal_walk_status: 'pending', steps_today: 0, walk_streak: 0, recovery_prompt: 'Resume today.', badge: null, alerts_remaining: 3, post_meal_walk_bonus: false }}
       waterMl={daily?.water_ml ?? 0}
       hydrationScore={daily?.hydration_score ?? 0}
       hydrationTargetMinMl={daily?.hydration_target_min_ml ?? 2500}

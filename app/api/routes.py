@@ -67,6 +67,8 @@ from app.schemas.schemas import (
     ConfirmFoodImageLogRequest,
     ConfirmFoodImageLogResponse,
     LoginRequest,
+    RegisterRequest,
+    AuthMeResponse,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     AdvancedAnalyticsResponse,
@@ -182,6 +184,19 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
     token_bundle = auth_service.authenticate(db, payload.email, payload.password, client_ip)
     return AuthTokenResponse(**token_bundle)
+
+
+
+@router.post("/auth/register")
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    user = auth_service.register(db, payload.email, payload.password)
+    return {"status": "ok", "user_id": user.id}
+
+
+@router.get("/auth/me", response_model=AuthMeResponse)
+def auth_me(claims: dict = Depends(get_current_token_claims), db: Session = Depends(get_db)):
+    user = auth_service.get_user_by_id(db, int(claims["sub"]))
+    return AuthMeResponse(id=user.id, email=user.email, role=user.role)
 
 
 @router.post("/auth/refresh", response_model=AuthTokenResponse)

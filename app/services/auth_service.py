@@ -96,6 +96,25 @@ class AuthService:
             "expires_in_seconds": settings.jwt_expiration_minutes * 60,
         }
 
+
+    def register(self, db: Session, email: str, password: str) -> User:
+        normalized_email = email.lower().strip()
+        existing_user = db.scalar(select(User).where(User.email == normalized_email))
+        if existing_user:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+        user = User(email=normalized_email, hashed_password=hash_password(password))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def get_user_by_id(self, db: Session, user_id: int) -> User:
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return user
+
     def rotate_refresh_token(self, db: Session, refresh_token: str, ip_address: str) -> dict:
         claims = decode_token(refresh_token)
         if claims.get("type") != "refresh":

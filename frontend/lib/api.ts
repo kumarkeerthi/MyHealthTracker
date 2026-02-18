@@ -251,9 +251,12 @@ export type MetabolicPhasePerformance = {
 
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
-async function readJson<T>(path: string): Promise<T | null> {
+async function readJson<T>(path: string, token?: string): Promise<T | null> {
   try {
-    const response = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+    const response = await fetch(`${baseUrl}${path}`, {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
     if (!response.ok) {
       return null;
     }
@@ -263,20 +266,20 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
-export async function getDashboardData() {
+export async function getDashboardData(userId: number, token: string) {
   const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance, movementPanel] = await Promise.all([
-    readJson<DailySummary>('/daily-summary?user_id=1'),
-    readJson<Profile>('/profile?user_id=1'),
-    readJson<VitalsSummary>('/vitals-summary?user_id=1'),
-    readJson<ExerciseSummary>('/exercise-summary?user_id=1'),
-    readJson<Challenge>('/challenge?user_id=1'),
-    readJson<Challenge>('/challenge/monthly?user_id=1'),
-    readJson<Recipe[]>('/recipes'),
-    readJson<RecipeSuggestion>('/recipes/suggestions?user_id=1'),
-    readJson<AdvancedAnalytics>('/analytics/advanced?user_id=1&days=30'),
-    readJson<HabitIntelligence>('/habits/intelligence?user_id=1&days=90'),
-    readJson<MetabolicPhasePerformance>('/metabolic/performance-view?user_id=1'),
-    readJson<MovementPanel>('/movement/panel?user_id=1'),
+    readJson<DailySummary>(`/daily-summary?user_id=${userId}`, token),
+    readJson<Profile>(`/profile?user_id=${userId}`, token),
+    readJson<VitalsSummary>(`/vitals-summary?user_id=${userId}`, token),
+    readJson<ExerciseSummary>(`/exercise-summary?user_id=${userId}`, token),
+    readJson<Challenge>(`/challenge?user_id=${userId}`, token),
+    readJson<Challenge>(`/challenge/monthly?user_id=${userId}`, token),
+    readJson<Recipe[]>('/recipes', token),
+    readJson<RecipeSuggestion>(`/recipes/suggestions?user_id=${userId}`, token),
+    readJson<AdvancedAnalytics>(`/analytics/advanced?user_id=${userId}&days=30`, token),
+    readJson<HabitIntelligence>(`/habits/intelligence?user_id=${userId}&days=90`, token),
+    readJson<MetabolicPhasePerformance>(`/metabolic/performance-view?user_id=${userId}`, token),
+    readJson<MovementPanel>(`/movement/panel?user_id=${userId}`, token),
   ]);
 
   return {
@@ -419,4 +422,24 @@ export async function logHydration(amountMl: number) {
 
 export async function getMovementSettings() {
   return await readJson<MovementSettings>('/movement/settings?user_id=1');
+}
+
+export type AuthMe = { id: number; email: string; role: string };
+
+export async function login(email: string, password: string) {
+  const response = await fetch(`${baseUrl}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Invalid credentials");
+  }
+
+  return await response.json();
+}
+
+export async function getMe(token: string): Promise<AuthMe | null> {
+  return await readJson<AuthMe>("/auth/me", token);
 }
