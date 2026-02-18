@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models import ExerciseCategory
 from app.models import MetabolicPhase
@@ -629,12 +629,12 @@ class HabitIntelligenceResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str = Field(min_length=8)
 
 
 class RegisterRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str = Field(min_length=8)
 
 
@@ -644,13 +644,8 @@ class AuthMeResponse(BaseModel):
     role: str
 
 
-class TokenRefreshRequest(BaseModel):
-    refresh_token: str
-
-
 class AuthTokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in_seconds: int
 

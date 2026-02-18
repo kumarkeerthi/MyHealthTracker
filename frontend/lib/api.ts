@@ -251,12 +251,53 @@ export type MetabolicPhasePerformance = {
 
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
-async function readJson<T>(path: string, token?: string): Promise<T | null> {
+let accessToken: string | null = null;
+
+function getCsrfTokenFromCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  const cookie = document.cookie.split('; ').find((item) => item.startsWith('csrf_token='));
+  if (!cookie) return null;
+  return decodeURIComponent(cookie.split('=')[1] ?? '');
+}
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function getAccessToken() {
+  return accessToken;
+}
+
+async function apiRequest(path: string, init: RequestInit = {}, retryOn401 = true): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrf = getCsrfTokenFromCookie();
+    if (csrf) headers.set('X-CSRF-Token', csrf);
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (response.status === 401 && retryOn401 && path !== '/auth/refresh') {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return apiRequest(path, init, false);
+    }
+  }
+
+  return response;
+}
+
+async function readJson<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      cache: 'no-store',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
+    const response = await apiRequest(path);
     if (!response.ok) {
       return null;
     }
@@ -266,36 +307,39 @@ async function readJson<T>(path: string, token?: string): Promise<T | null> {
   }
 }
 
-export async function getDashboardData(userId: number, token: string) {
+export async function refreshAccessToken(): Promise<boolean> {
+  const csrf = getCsrfTokenFromCookie();
+  const response = await fetch(`${baseUrl}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: csrf ? { 'X-CSRF-Token': csrf } : undefined,
+  });
+  if (!response.ok) {
+    setAccessToken(null);
+    return false;
+  }
+  const payload = (await response.json()) as { access_token: string };
+  setAccessToken(payload.access_token);
+  return true;
+}
+
+export async function getDashboardData(userId: number) {
   const [daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance, movementPanel] = await Promise.all([
-    readJson<DailySummary>(`/daily-summary?user_id=${userId}`, token),
-    readJson<Profile>(`/profile?user_id=${userId}`, token),
-    readJson<VitalsSummary>(`/vitals-summary?user_id=${userId}`, token),
-    readJson<ExerciseSummary>(`/exercise-summary?user_id=${userId}`, token),
-    readJson<Challenge>(`/challenge?user_id=${userId}`, token),
-    readJson<Challenge>(`/challenge/monthly?user_id=${userId}`, token),
-    readJson<Recipe[]>('/recipes', token),
-    readJson<RecipeSuggestion>(`/recipes/suggestions?user_id=${userId}`, token),
-    readJson<AdvancedAnalytics>(`/analytics/advanced?user_id=${userId}&days=30`, token),
-    readJson<HabitIntelligence>(`/habits/intelligence?user_id=${userId}&days=90`, token),
-    readJson<MetabolicPhasePerformance>(`/metabolic/performance-view?user_id=${userId}`, token),
-    readJson<MovementPanel>(`/movement/panel?user_id=${userId}`, token),
+    readJson<DailySummary>(`/daily-summary?user_id=${userId}`),
+    readJson<Profile>(`/profile?user_id=${userId}`),
+    readJson<VitalsSummary>(`/vitals-summary?user_id=${userId}`),
+    readJson<ExerciseSummary>(`/exercise-summary?user_id=${userId}`),
+    readJson<Challenge>(`/challenge?user_id=${userId}`),
+    readJson<Challenge>(`/challenge/monthly?user_id=${userId}`),
+    readJson<Recipe[]>('/recipes'),
+    readJson<RecipeSuggestion>(`/recipes/suggestions?user_id=${userId}`),
+    readJson<AdvancedAnalytics>(`/analytics/advanced?user_id=${userId}&days=30`),
+    readJson<HabitIntelligence>(`/habits/intelligence?user_id=${userId}&days=90`),
+    readJson<MetabolicPhasePerformance>(`/metabolic/performance-view?user_id=${userId}`),
+    readJson<MovementPanel>(`/movement/panel?user_id=${userId}`),
   ]);
 
-  return {
-    daily,
-    profile,
-    vitals,
-    exercise,
-    challenge,
-    monthlyChallenge,
-    recipes,
-    recipeSuggestion,
-    analytics,
-    habitIntelligence,
-    metabolicPerformance,
-    movementPanel,
-  };
+  return { daily, profile, vitals, exercise, challenge, monthlyChallenge, recipes, recipeSuggestion, analytics, habitIntelligence, metabolicPerformance, movementPanel };
 }
 
 export async function getNotificationSettings() {
@@ -303,21 +347,14 @@ export async function getNotificationSettings() {
 }
 
 export async function updateNotificationSettings(payload: Partial<Omit<NotificationSettings, 'user_id'>>) {
-  const response = await fetch(`${baseUrl}/notification-settings?user_id=1`, {
+  const response = await apiRequest('/notification-settings?user_id=1', {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    throw new Error('Failed to update notification settings');
-  }
-
+  if (!response.ok) throw new Error('Failed to update notification settings');
   return (await response.json()) as NotificationSettings;
 }
-
 
 export type ImageAnalyzedFood = {
   name: string;
@@ -350,72 +387,34 @@ export type AnalyzeFoodImageResponse = {
 export async function analyzeFoodImage(file: File, mealContext?: string) {
   const formData = new FormData();
   formData.append('image', file);
-  if (mealContext) {
-    formData.append('meal_context', mealContext);
-  }
-
-  const response = await fetch(`${baseUrl}/analyze-food-image`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to analyze image');
-  }
-
+  if (mealContext) formData.append('meal_context', mealContext);
+  const response = await apiRequest('/analyze-food-image', { method: 'POST', body: formData });
+  if (!response.ok) throw new Error('Failed to analyze image');
   return (await response.json()) as AnalyzeFoodImageResponse;
 }
 
-export async function confirmFoodImageLog(payload: {
-  foods: ImageAnalyzedFood[];
-  image_url: string;
-  vision_confidence: number;
-  portion_scale_factor: number;
-  manual_adjustment_flag: boolean;
-  meal_context?: string;
-}) {
-  const response = await fetch(`${baseUrl}/analyze-food-image/confirm`, {
+export async function confirmFoodImageLog(payload: { foods: ImageAnalyzedFood[]; image_url: string; vision_confidence: number; portion_scale_factor: number; manual_adjustment_flag: boolean; meal_context?: string; }) {
+  const response = await apiRequest('/analyze-food-image/confirm', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    throw new Error('Failed to confirm food log');
-  }
-
+  if (!response.ok) throw new Error('Failed to confirm food log');
   return await response.json();
 }
-
 
 export async function getPushPublicKey() {
   return await readJson<{ public_key: string }>('/push/public-key');
 }
 
-export async function subscribePush(payload: {
-  user_id: number;
-  endpoint: string;
-  expirationTime: number | null;
-  keys: { p256dh: string; auth: string };
-  user_agent?: string;
-}) {
-  const response = await fetch(`${baseUrl}/push/subscribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+export async function subscribePush(payload: { user_id: number; endpoint: string; expirationTime: number | null; keys: { p256dh: string; auth: string }; user_agent?: string; }) {
+  const response = await apiRequest('/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   if (!response.ok) throw new Error('Failed to subscribe for push');
   return await response.json();
 }
 
 export async function logHydration(amountMl: number) {
-  const response = await fetch(`${baseUrl}/hydration/log`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 1, amount_ml: amountMl }),
-  });
+  const response = await apiRequest('/hydration/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: 1, amount_ml: amountMl }) });
   if (!response.ok) throw new Error('Failed to log hydration');
   return await response.json();
 }
@@ -426,20 +425,42 @@ export async function getMovementSettings() {
 
 export type AuthMe = { id: number; email: string; role: string };
 
-export async function login(email: string, password: string) {
+type AuthTokenResponse = { access_token: string };
+
+export async function login(email: string, password: string): Promise<AuthTokenResponse> {
+  const csrf = getCsrfTokenFromCookie();
   const response = await fetch(`${baseUrl}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+    credentials: 'include',
     body: JSON.stringify({ email, password }),
   });
-
-  if (!response.ok) {
-    throw new Error("Invalid credentials");
-  }
-
-  return await response.json();
+  if (!response.ok) throw new Error('Invalid credentials');
+  const payload = (await response.json()) as AuthTokenResponse;
+  setAccessToken(payload.access_token);
+  return payload;
 }
 
-export async function getMe(token: string): Promise<AuthMe | null> {
-  return await readJson<AuthMe>("/auth/me", token);
+export async function register(email: string, password: string): Promise<AuthTokenResponse> {
+  const csrf = getCsrfTokenFromCookie();
+  const response = await fetch(`${baseUrl}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) throw new Error('Registration failed');
+  const payload = (await response.json()) as AuthTokenResponse;
+  setAccessToken(payload.access_token);
+  return payload;
+}
+
+export async function getMe(): Promise<AuthMe | null> {
+  return await readJson<AuthMe>('/auth/me');
+}
+
+export async function logout() {
+  const csrf = getCsrfTokenFromCookie();
+  await fetch(`${baseUrl}/auth/logout`, { method: 'POST', credentials: 'include', headers: csrf ? { 'X-CSRF-Token': csrf } : undefined });
+  setAccessToken(null);
 }

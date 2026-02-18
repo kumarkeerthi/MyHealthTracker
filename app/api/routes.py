@@ -1,7 +1,8 @@
 import logging
+import secrets
 from datetime import datetime, timedelta, time, date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -76,7 +77,6 @@ from app.schemas.schemas import (
     MetabolicPhasePerformanceResponse,
     MovementPanelResponse,
     MovementSettingsResponse,
-    TokenRefreshRequest,
     UpdateMovementSettingsRequest,
 )
 from app.services.apple_health_service import AppleHealthService
@@ -144,6 +144,40 @@ def _get_or_create_daily_log(db: Session, user_id: int, log_date):
 
 
 login_rate_limiter = SlidingWindowLimiter()
+register_rate_limiter = SlidingWindowLimiter()
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.require_https,
+        samesite="lax",
+        max_age=settings.refresh_token_expiration_days * 24 * 60 * 60,
+        path="/",
+    )
+
+
+def _set_csrf_cookie(response: Response) -> str:
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        secure=settings.require_https,
+        samesite="lax",
+        max_age=settings.refresh_token_expiration_days * 24 * 60 * 60,
+        path="/",
+    )
+    return csrf_token
+
+
+def _validate_csrf(request: Request) -> None:
+    csrf_cookie = request.cookies.get("csrf_token")
+    csrf_header = request.headers.get("X-CSRF-Token")
+    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        raise HTTPException(status_code=403, detail="CSRF token mismatch")
 
 
 def _increment_llm_daily_usage(db: Session, user_id: int, route: str, ip_address: str | None) -> bool:
@@ -173,24 +207,29 @@ def _increment_llm_daily_usage(db: Session, user_id: int, route: str, ip_address
 
 
 @router.post("/auth/login", response_model=AuthTokenResponse)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
-    limit_rule = RateLimitRule(
-        limit=settings.login_rate_limit_attempts,
-        window_seconds=settings.login_rate_limit_window_seconds,
-    )
+    limit_rule = RateLimitRule(limit=5, window_seconds=60)
     if not login_rate_limiter.is_allowed(f"login:{client_ip}", limit_rule):
         raise HTTPException(status_code=429, detail="Too many login attempts. Please retry later.")
 
     token_bundle = auth_service.authenticate(db, payload.email, payload.password, client_ip)
-    return AuthTokenResponse(**token_bundle)
+    _set_refresh_cookie(response, token_bundle["refresh_token"])
+    _set_csrf_cookie(response)
+    return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
+@router.post("/auth/register", response_model=AuthTokenResponse)
+def register(payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    limit_rule = RateLimitRule(limit=10, window_seconds=3600)
+    if not register_rate_limiter.is_allowed(f"register:{client_ip}", limit_rule):
+        raise HTTPException(status_code=429, detail="Too many register attempts. Please retry later.")
 
-@router.post("/auth/register")
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
-    user = auth_service.register(db, payload.email, payload.password)
-    return {"status": "ok", "user_id": user.id}
+    token_bundle = auth_service.register(db, payload.email, payload.password, client_ip)
+    _set_refresh_cookie(response, token_bundle["refresh_token"])
+    _set_csrf_cookie(response)
+    return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
 @router.get("/auth/me", response_model=AuthMeResponse)
@@ -200,15 +239,25 @@ def auth_me(claims: dict = Depends(get_current_token_claims), db: Session = Depe
 
 
 @router.post("/auth/refresh", response_model=AuthTokenResponse)
-def refresh_token(payload: TokenRefreshRequest, request: Request, db: Session = Depends(get_db)):
-    client_ip = request.client.host if request.client else "unknown"
-    token_bundle = auth_service.rotate_refresh_token(db, payload.refresh_token, client_ip)
-    return AuthTokenResponse(**token_bundle)
+def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
+    _validate_csrf(request)
+    refresh_cookie = request.cookies.get("refresh_token")
+    if not refresh_cookie:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+    token_bundle = auth_service.rotate_refresh_token(db, refresh_cookie)
+    _set_refresh_cookie(response, token_bundle["refresh_token"])
+    _set_csrf_cookie(response)
+    return AuthTokenResponse(access_token=token_bundle["access_token"], expires_in_seconds=token_bundle["expires_in_seconds"])
 
 
 @router.post("/auth/logout")
-def logout(payload: TokenRefreshRequest, db: Session = Depends(get_db)):
-    auth_service.logout(db, payload.refresh_token)
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    _validate_csrf(request)
+    refresh_cookie = request.cookies.get("refresh_token")
+    if refresh_cookie:
+        auth_service.logout(db, refresh_cookie)
+    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("csrf_token", path="/")
     return {"status": "ok"}
 
 

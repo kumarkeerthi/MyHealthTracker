@@ -15,7 +15,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     age: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     sex: Mapped[str] = mapped_column(String(20), default="unspecified", nullable=False)
@@ -46,6 +48,7 @@ class User(Base):
     habit_checkins: Mapped[list["HabitCheckin"]] = relationship(back_populates="user")
     metabolic_agent_state: Mapped["MetabolicAgentState"] = relationship(back_populates="user", uselist=False)
     pending_recommendations: Mapped[list["PendingRecommendation"]] = relationship(back_populates="user")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
     auth_refresh_tokens: Mapped[list["AuthRefreshToken"]] = relationship(back_populates="user")
     auth_login_attempts: Mapped[list["AuthLoginAttempt"]] = relationship(back_populates="user")
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user")
@@ -103,6 +106,19 @@ class AuthRefreshToken(Base):
     ip_address: Mapped[str] = mapped_column(String(64), nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="auth_refresh_tokens")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    hashed_token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
 
 
 class AuthLoginAttempt(Base):

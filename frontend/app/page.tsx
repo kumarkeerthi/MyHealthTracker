@@ -7,14 +7,14 @@ import { useAuth } from '@/context/auth-provider';
 import { getDashboardData } from '@/lib/api';
 
 export default function Home() {
-  const { token, user, loading } = useAuth();
+  const { token, user, loading, logout } = useAuth();
   const [data, setData] = useState<Awaited<ReturnType<typeof getDashboardData>> | null>(null);
 
   useEffect(() => {
     if (!token || !user) {
       return;
     }
-    getDashboardData(user.id, token).then(setData);
+    getDashboardData(user.id).then(setData);
   }, [token, user]);
 
   if (loading) {
@@ -38,7 +38,13 @@ export default function Home() {
   const compliance = Math.round((complianceSignals / 3) * 100) || 66;
 
   return (
-    <Dashboard
+    <main>
+      <div className="p-4">
+        <button className="rounded bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={() => void logout()} type="button">
+          Logout
+        </button>
+      </div>
+      <Dashboard
       insulinScore={insulin}
       compliance={compliance}
       protein={daily?.total_protein ?? 62}
@@ -88,5 +94,6 @@ export default function Home() {
       dinnerInsulinImpact={daily?.dinner_insulin_impact ?? 0}
       eveningInsulinSpikeRisk={daily?.evening_insulin_spike_risk ?? false}
     />
+    </main>
   );
 }
