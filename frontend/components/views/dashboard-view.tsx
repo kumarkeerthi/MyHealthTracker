@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Droplets, Moon, Target, Zap } from 'lucide-react';
 
 type Props = {
+  onQuickAddWater: () => void;
+  onOpenWaterModal: () => void;
   insulinScore: number;
   compliance: number;
   hydrationScore: number;
@@ -34,7 +36,7 @@ function MetricCard({ label, value, icon, accent = false }: { label: string; val
   );
 }
 
-export function DashboardView({ insulinScore, compliance, hydrationScore, waterMl, sleepHours, protein, carbs, oil, proteinHit, carbUnderCeiling, hydrationTargetAchieved, strengthLogged, dinnerLogged, dinnerCarbs, dinnerProtein, dinnerMode, dinnerInsulinImpact, eveningInsulinSpikeRisk }: Props) {
+export function DashboardView({ insulinScore, compliance, hydrationScore, waterMl, sleepHours, protein, carbs, oil, proteinHit, carbUnderCeiling, hydrationTargetAchieved, strengthLogged, dinnerLogged, dinnerCarbs, dinnerProtein, dinnerMode, dinnerInsulinImpact, eveningInsulinSpikeRisk, onQuickAddWater, onOpenWaterModal }: Props) {
   const dayComplete = proteinHit && carbUnderCeiling && hydrationTargetAchieved && strengthLogged;
 
   return (
@@ -42,7 +44,9 @@ export function DashboardView({ insulinScore, compliance, hydrationScore, waterM
       <div className="grid grid-cols-2 gap-3">
         <MetricCard label="Insulin" value={insulinScore.toFixed(0)} icon={<Zap size={14} />} />
         <MetricCard label="Compliance" value={`${compliance}%`} icon={<Target size={14} />} accent={proteinHit} />
-        <MetricCard label="Hydration" value={`${hydrationScore.toFixed(0)}%`} icon={<Droplets size={14} />} />
+        <button type="button" onClick={onQuickAddWater} onContextMenu={(e) => { e.preventDefault(); onOpenWaterModal(); }} onTouchStart={() => { const timer = setTimeout(onOpenWaterModal, 650); const clear = () => { clearTimeout(timer); window.removeEventListener('touchend', clear); }; window.addEventListener('touchend', clear); }} className="text-left">
+          <MetricCard label="Hydration" value={`${hydrationScore.toFixed(0)}%`} icon={<Droplets size={14} />} />
+        </button>
         <MetricCard label="Sleep" value={`${sleepHours.toFixed(1)}h`} icon={<Moon size={14} />} />
       </div>
 
@@ -53,6 +57,7 @@ export function DashboardView({ insulinScore, compliance, hydrationScore, waterM
           <div className="flex justify-between"><span>Triglyceride recovery active</span><span>{carbs.toFixed(1)} g</span></div>
           <div className="flex justify-between"><span>Hidden Oil</span><span>{oil.toFixed(1)} tsp</span></div>
           <div className="flex justify-between"><span>Water</span><span>{waterMl.toFixed(0)} ml</span></div>
+          <div className="h-2 rounded bg-white/10"><motion.div className="h-full rounded bg-cyan-400" animate={{ width: `${Math.max(0, Math.min(100, hydrationScore))}%` }} transition={{ duration: 0.4 }} /></div>
         </div>
       </div>
 

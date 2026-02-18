@@ -3,6 +3,9 @@
 import { useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { logHydration } from '@/lib/api';
+import { useDashboardData } from '@/context/dashboard-data-context';
+import { useToast } from '@/components/ui/toast';
 import { BarChart3, Home, Trophy, User, Dumbbell, Droplets } from 'lucide-react';
 import type { AdvancedAnalytics, HabitIntelligence, MetabolicPhasePerformance } from '@/lib/api';
 import { PwaClient } from '@/components/pwa-client';
@@ -112,6 +115,22 @@ export function Dashboard(props: DashboardProps) {
   const [tab, setTab] = useState<TabKey>('home');
   const [mode, setMode] = useState<VisualMode>('performance');
   const isSunday = new Date().getDay() === 0;
+  const { refreshDashboard } = useDashboardData();
+  const { show } = useToast();
+
+  const quickAddWater = async () => {
+    try {
+      await logHydration(250);
+      show('success', 'Added 250ml water');
+      await refreshDashboard();
+    } catch {
+      show('error', 'Unable to add hydration');
+    }
+  };
+
+  const openWaterModal = () => {
+    window.dispatchEvent(new CustomEvent('open-activity-modal', { detail: 'water' }));
+  };
 
   const emotionState = useMemo(
     () => computeEmotionState({
@@ -236,6 +255,8 @@ export function Dashboard(props: DashboardProps) {
           {tab === 'home' && (
             <div className="space-y-4">
               <DashboardView
+                onQuickAddWater={() => void quickAddWater()}
+                onOpenWaterModal={openWaterModal}
                 insulinScore={props.insulinScore}
                 compliance={props.compliance}
                 hydrationScore={props.hydrationScore}

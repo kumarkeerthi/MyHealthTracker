@@ -28,6 +28,8 @@ from app.models.models import (
     PushSubscription,
     RecommendationStatus,
     Recipe,
+    Report,
+    ReportParameter,
     User,
     VitalsEntry,
 )
@@ -54,6 +56,8 @@ __all__ = [
     "NotificationSettings",
     "SecurityAuditLog",
     "Recipe",
+    "Report",
+    "ReportParameter",
     "HabitChallengeType",
     "HabitDefinition",
     "HealthSyncSummary",

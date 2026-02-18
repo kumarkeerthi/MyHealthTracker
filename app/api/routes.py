@@ -1,5 +1,7 @@
 import logging
 import secrets
+from pathlib import Path
+from uuid import uuid4
 from datetime import datetime, timedelta, time, date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -32,6 +34,8 @@ from app.models import (
     LLMUsageDaily,
     VitalsEntry,
     Recipe,
+    Report,
+    ReportParameter,
 )
 from app.schemas.schemas import (
     AppleHealthImportRequest,
@@ -78,6 +82,8 @@ from app.schemas.schemas import (
     MovementPanelResponse,
     MovementSettingsResponse,
     UpdateMovementSettingsRequest,
+    ReportUploadResponse,
+    ReportConfirmRequest,
 )
 from app.services.apple_health_service import AppleHealthService
 from app.services.challenge_engine import ChallengeEngine
@@ -112,11 +118,13 @@ from app.services.strength_engine import (
     metabolic_strength_signals,
 )
 from app.services.vitals_engine import calculate_vitals_risk_score
+from app.services.report_parser_service import parse_lab_report
 
 public_router = APIRouter()
 protected_router = APIRouter(dependencies=[Depends(get_current_token_claims)])
 logger = logging.getLogger(__name__)
 health_sync_rate_limiter = SlidingWindowLimiter()
+parsed_report_store: dict[str, dict] = {}
 
 
 def _to_recipe_response(recipe: Recipe) -> RecipeResponse:
@@ -1272,6 +1280,106 @@ def hydration_log(payload: HydrationLogRequest, db: Session = Depends(get_db)):
     db.commit()
     return HydrationLogResponse(date=target_date, **data)
 
+
+
+
+def _sanitize_upload_filename(name: str) -> str:
+    allowed = ''.join(ch for ch in name if ch.isalnum() or ch in {'.', '_', '-'})
+    return (allowed or 'report').strip('._-')[:120]
+
+
+def _extract_text_from_report(path: Path, content_type: str) -> str:
+    if content_type == 'application/pdf':
+        from pdfminer.high_level import extract_text
+
+        return extract_text(str(path))
+    from PIL import Image
+    import pytesseract
+
+    with Image.open(path) as image:
+        return pytesseract.image_to_string(image)
+
+
+@protected_router.post('/reports/upload', response_model=ReportUploadResponse)
+def upload_report(file: UploadFile = File(...), claims: dict = Depends(get_current_token_claims)):
+    if not file.content_type:
+        raise HTTPException(status_code=400, detail='File type missing')
+
+    allowed_mime = {'application/pdf', 'image/jpeg', 'image/png'}
+    if file.content_type not in allowed_mime:
+        raise HTTPException(status_code=400, detail='Unsupported file type')
+
+    payload = file.file.read()
+    if len(payload) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail='File too large (max 10MB)')
+
+    user_id = int(claims.get('sub', 1))
+    user_dir = Path('/data/uploads/reports') / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _sanitize_upload_filename(file.filename or 'report')
+    filename = f"{uuid4().hex}_{safe_name}"
+    target = user_dir / filename
+    target.write_bytes(payload)
+
+    logger.info('Report uploaded user_id=%s filename=%s bytes=%s', user_id, filename, len(payload))
+
+    try:
+        raw_text = _extract_text_from_report(target, file.content_type)
+        parsed = parse_lab_report(raw_text)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f'Unable to parse report: {exc}') from exc
+
+    token = secrets.token_urlsafe(24)
+    parsed_payload = {
+        'user_id': user_id,
+        'filename': filename,
+        'report_date': parsed.report_date,
+        'parameters': [
+            {
+                'name': item.name,
+                'normalized_key': item.normalized_key,
+                'value': item.value,
+                'unit': item.unit,
+                'reference_range': item.reference_range,
+            }
+            for item in parsed.parameters
+        ],
+    }
+    parsed_report_store[token] = parsed_payload
+    return {'file_token': token, 'report_date': parsed.report_date, 'parameters': parsed_payload['parameters']}
+
+
+@protected_router.post('/reports/confirm')
+def confirm_report(payload: ReportConfirmRequest, db: Session = Depends(get_db), claims: dict = Depends(get_current_token_claims)):
+    stored = parsed_report_store.get(payload.file_token)
+    user_id = int(claims.get('sub', 1))
+    if not stored or stored['user_id'] != user_id:
+        raise HTTPException(status_code=404, detail='Report token expired or missing')
+
+    report = Report(user_id=user_id, filename=stored['filename'], report_date=payload.report_date)
+    db.add(report)
+    db.flush()
+
+    dedupe: set[str] = set()
+    for item in payload.parameters:
+        dedupe_key = item.normalized_key.lower()
+        if dedupe_key in dedupe:
+            continue
+        dedupe.add(dedupe_key)
+        db.add(
+            ReportParameter(
+                report_id=report.id,
+                name=item.name,
+                normalized_key=item.normalized_key,
+                value=item.value,
+                unit=item.unit,
+                reference_range=item.reference_range,
+            )
+        )
+
+    db.commit()
+    parsed_report_store.pop(payload.file_token, None)
+    return {'status': 'ok', 'report_id': report.id}
 
 @protected_router.post("/analyze-food-image", response_model=AnalyzeFoodImageResponse)
 def analyze_food_image(
