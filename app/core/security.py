@@ -104,10 +104,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-    EXEMPT_PATHS = {"/auth/login", "/auth/register", "/auth/refresh", "/docs", "/openapi.json"}
+    SAFE_METHODS = {"GET", "HEAD"}
+    EXEMPT_PATHS = {"/docs", "/openapi.json"}
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        if request.url.path.startswith("/auth/"):
+            return await call_next(request)
+
         if request.method in self.SAFE_METHODS or request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 

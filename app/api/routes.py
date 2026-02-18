@@ -242,10 +242,9 @@ def auth_me(claims: dict = Depends(get_current_token_claims), db: Session = Depe
 
 @public_router.post("/auth/refresh", response_model=AuthTokenResponse)
 def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
-    _validate_csrf(request)
     refresh_cookie = request.cookies.get("refresh_token")
     if not refresh_cookie:
-        raise HTTPException(status_code=401, detail="Refresh token missing")
+        raise HTTPException(status_code=403, detail="Refresh token missing")
     token_bundle = auth_service.rotate_refresh_token(db, refresh_cookie)
     _set_refresh_cookie(response, token_bundle["refresh_token"])
     _set_csrf_cookie(response)

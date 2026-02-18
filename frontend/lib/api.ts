@@ -308,11 +308,9 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 export async function refreshAccessToken(): Promise<boolean> {
-  const csrf = getCsrfTokenFromCookie();
   const response = await fetch(`${baseUrl}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',
-    headers: csrf ? { 'X-CSRF-Token': csrf } : undefined,
   });
   if (!response.ok) {
     setAccessToken(null);
@@ -428,10 +426,9 @@ export type AuthMe = { id: number; email: string; role: string };
 type AuthTokenResponse = { access_token: string };
 
 export async function login(email: string, password: string): Promise<AuthTokenResponse> {
-  const csrf = getCsrfTokenFromCookie();
   const response = await fetch(`${baseUrl}/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ email, password }),
   });
@@ -442,10 +439,9 @@ export async function login(email: string, password: string): Promise<AuthTokenR
 }
 
 export async function register(email: string, password: string): Promise<AuthTokenResponse> {
-  const csrf = getCsrfTokenFromCookie();
   const response = await fetch(`${baseUrl}/auth/register`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ email, password }),
   });
