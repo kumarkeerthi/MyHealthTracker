@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "verify:motion": "! grep -R \"motion\\.button\\|motion\\.section\\|motion\\.form\\|motion\\.aside\\|motion\\.header\\|motion\\.footer\\|motion\\.nav\\|motion\\.article\\|motion\\.main\\|motion('div')\" --include='*.tsx' ./",
+    "validate": "npm run typecheck && npm run verify:motion",
+    "test": "node --test __tests__/*.test.js"
   },
   "dependencies": {
     "lucide-react": "^0.475.0",

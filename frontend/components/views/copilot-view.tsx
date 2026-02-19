@@ -26,7 +26,7 @@ export function CopilotView() {
   useEffect(() => {
     if (!conversationId) return;
     void getCopilotConversation(conversationId).then((detail) => {
-      const loaded = detail.messages.map((msg, index) => ({
+      const loaded: ChatMessage[] = detail.messages.map((msg, index) => ({
         id: `${conversationId}-${index}`,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         content: msg.content,
