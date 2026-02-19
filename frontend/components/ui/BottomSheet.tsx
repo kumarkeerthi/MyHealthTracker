@@ -48,8 +48,26 @@ export function BottomSheet({ open, onClose, onSelect }: { open: boolean; onClos
     <AnimatePresence>
       {open ? (
         <>
-          <motion.button aria-label="Close logging menu" className="fixed inset-0 z-[70] bg-black/60" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-          <motion.section role="dialog" aria-label="Log Activity" ref={ref} className="fixed inset-x-0 bottom-0 z-[80] rounded-t-3xl border border-white/20 bg-slate-950 p-5" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ duration: 0.22 }}>
+          <motion.div
+            role="button"
+            tabIndex={0}
+            aria-label="Close logging menu"
+            className="fixed inset-0 z-[70] bg-black/60"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(event: React.MouseEvent<HTMLDivElement>) => {
+              event.preventDefault();
+              onClose();
+            }}
+            onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClose();
+              }
+            }}
+          />
+          <motion.div role="dialog" aria-modal="true" aria-label="Log Activity" ref={ref} className="fixed inset-x-0 bottom-0 z-[80] rounded-t-3xl border border-white/20 bg-slate-950 p-5" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ duration: 0.22 }}>
             <h2 className="mb-4 text-lg font-semibold">Log Activity</h2>
             <div className="grid grid-cols-2 gap-3">
               {options.map((item) => (
@@ -59,7 +77,7 @@ export function BottomSheet({ open, onClose, onSelect }: { open: boolean; onClos
                 </button>
               ))}
             </div>
-          </motion.section>
+          </motion.div>
         </>
       ) : null}
     </AnimatePresence>

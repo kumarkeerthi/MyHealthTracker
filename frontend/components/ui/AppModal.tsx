@@ -25,11 +25,29 @@ export function AppModal({ open, title, onClose, children }: { open: boolean; ti
     <AnimatePresence>
       {open ? (
         <>
-          <motion.button className="fixed inset-0 z-[81] bg-black/70" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} aria-label="Close modal" />
-          <motion.section role="dialog" aria-modal="true" aria-label={title} ref={ref} className="fixed inset-x-4 top-1/2 z-[82] max-h-[90vh] -translate-y-1/2 overflow-auto rounded-2xl border border-white/20 bg-slate-900 p-5" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}>
+          <motion.div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 z-[81] bg-black/70"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(event: React.MouseEvent<HTMLDivElement>) => {
+              event.preventDefault();
+              onClose();
+            }}
+            onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClose();
+              }
+            }}
+            aria-label="Close modal"
+          />
+          <motion.div role="dialog" aria-modal="true" aria-label={title} ref={ref} className="fixed inset-x-4 top-1/2 z-[82] max-h-[90vh] -translate-y-1/2 overflow-auto rounded-2xl border border-white/20 bg-slate-900 p-5" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}>
             <h3 className="mb-4 text-lg font-semibold">{title}</h3>
             {children}
-          </motion.section>
+          </motion.div>
         </>
       ) : null}
     </AnimatePresence>
